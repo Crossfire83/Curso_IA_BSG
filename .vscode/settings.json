@@ -1,0 +1,43 @@
+{
+  "files.trimTrailingWhitespace": true,
+  "diffEditor.ignoreTrimWhitespace": true,
+  "diffEditor.diffAlgorithm": "advanced",
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.renderWhitespace": "all",
+  "editor.tabSize": 4,
+  "redhat.telemetry.enabled": true,
+  "terminal.external.osxExec": "iTerm.app",
+  "terminal.explorerKind": "external",
+  "terminal.integrated.copyOnSelection": true,
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.external.linuxExec": "",
+  "[sql]": {
+    "editor.formatOnSave": false
+  },
+  "[dockerfile]": {
+    "editor.formatOnSave": false
+  },
+  "[javascript]": {
+    "editor.tabSize": 2
+  },
+  "[java]": {
+    "editor.tabSize": 4
+  },
+  "[python]": {
+    "editor.tabSize": 4
+  },
+  "[json]": {
+    "editor.tabSize": 2
+  },
+  "cSpell.words": ["apigee", "Imei", "msisdn"],
+  "geminicodeassist.project": "",
+  "aws.telemetry": false,
+  "amazonQ.telemetry": false,
+  "kiroAgent.configureMCP": "Disabled",
+  "snyk.advanced.organization": "1ea1b9cd-0435-4145-82c8-5d88f9932085",
+  "snyk.advanced.autoSelectOrganization": false,
+  "snyk.advanced.additionalParameters": "--skip-unresolved=true --allow-missing"
+}
