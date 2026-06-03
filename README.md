@@ -38,6 +38,8 @@ Then install the python dependencies with:
 
 ## Steps for deployment
 
+### AWS
+
 1. Create your account in [AWS](https://aws.amazon.com/free/)
    1. Create your access key. This will help us with the interconnection of cloud providers. (Azure to AWS)
       1. Go to the menu on the top-right corner of your aws console screen.
@@ -54,31 +56,33 @@ Then install the python dependencies with:
       6. Disable Object lock.
    3. For the Bedrock Model, this project already uses Bedrock integration, so no additional setup is needed.
 
-2. Create your [Azure](https://portal.azure.com) account.
-   1. Create a Subscription (name it however you want)
-   2. Create a Resource Group inside the Subscription created in step 2.1 (name it however you want)
-      1. Select the region most convenient to you (e.g. south central US)
-   3. Create an App Service
-      1. Select just "Web App" when you click on the create button.
-         1. Select the Subscription and Resource Group created on steps 2.1 and 2.2 respectively
-         2. Name your webapp however you want.
-         3. Select the option "Container" on the Publish field (radio button)
-         4. Select operating system, by default and conveniently is linux.
-         5. Select the region most convenient to you (e.g. south central US)
-         6. Select the linux plan, or create a new one if you dont have one.
-         7. Select the pricing plan. (For this project I'll select "Free F1")
-      2. Click "Next: Database >"
-         1. DO NOT create a database.
-      3. Click "Next: Container >"
-         1. Disable Sidecar support.
-         2. Select image source: other container registries.
-         3. Access type: Public
-         4. Registry server URL: https://index.docker.io
-         5. Image and tag: <name_of_your_docker_container>:<version>
-         6. Startup command: gunicorn app:app
-      4. Click "Next: Networking >"
-         1. Enable public access.
-      5. Click "Next: Monitor + secure >"
-      6. Click "Next: Tags >". (Optionally add the tags you want).
-      7. Click "Next: Review + create >"
-      8. Review the settings you entered and finally click "Create".
+### Azure
+
+1. Create your [Azure](https://portal.azure.com) account.
+2. Create a Subscription (name it however you want)
+3. Create a Resource Group inside the Subscription created in step 2 (name it however you want)
+   1. Select the region most convenient to you (e.g. south central US)
+4. Create an App Service
+   1. Select just "Web App" when you click on the create button.
+      1. Select the Subscription and Resource Group created on steps 2 and 3 respectively
+      2. Name your webapp however you want.
+      3. Select the option "Container" on the Publish field (radio button)
+      4. Select operating system, by default and conveniently is linux.
+      5. Select the region most convenient to you (e.g. south central US)
+      6. Select the linux plan, or create a new one if you dont have one.
+      7. Select the pricing plan. (For this project I'll select "Free F1")
+   2. Click "Next: Database >"
+      1. DO NOT create a database.
+   3. Click "Next: Container >"
+      1. Disable Sidecar support.
+      2. Select image source: other container registries.
+      3. Access type: Public
+      4. Registry server URL: https://index.docker.io
+      5. Image and tag: <name_of_your_docker_container>:<version>
+      6. Startup command: gunicorn app:app
+   4. Click "Next: Networking >"
+      1. Enable public access.
+   5. Click "Next: Monitor + secure >"
+   6. Click "Next: Tags >". (Optionally add the tags you want).
+   7. Click "Next: Review + create >"
+   8. Review the settings you entered and finally click "Create".
