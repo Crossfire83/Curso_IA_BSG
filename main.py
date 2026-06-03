@@ -5,6 +5,7 @@ from llm_client import BedrockLLM
 from grounding import GroundingEvaluator
 from prompt_template import SYSTEM_PROMPT
 from exclude_patterns import EXCLUDE_PATTERNS
+from dotenv import load_dotenv
 
 # ── Configuration ──────────────────────────────────────────────
 LLM_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -18,15 +19,22 @@ class CodebaseRAG:
 
     def __init__(
         self,
-        source_dir: str,
+        source_dir: str | None = None,
         exclude_patterns: list[str] | None = None,
         model: str = LLM_MODEL,
-        region_name: str = "us-west-2",
+        region_name: str = "us-west-1",
+        documents=None,
     ):
-        # 1. Collect files
-        collector = FileCollector(source_dir, exclude_patterns)
-        raw_docs = collector.collect()
-        print(f"Collected {len(raw_docs)} files from {source_dir}")
+        # 1. Collect files — either from pre-collected documents or from disk
+        if documents is not None:
+            raw_docs = documents
+            print(f"Collected {len(raw_docs)} pre-loaded documents")
+        else:
+            if not source_dir:
+                raise ValueError("source_dir must be provided when documents is not given")
+            collector = FileCollector(source_dir, exclude_patterns)
+            raw_docs = collector.collect()
+            print(f"Collected {len(raw_docs)} files from {source_dir}")
 
         # 2. Build lookup maps
         self.file_content_map = {
@@ -59,7 +67,7 @@ class CodebaseRAG:
             structural_detector=self.store.structural_detector,
         )
 
-    def ask(self, query: str, min_grounding: float = 0.7, invoke_llm: bool, print_citations: bool) -> dict:
+    def ask(self, query: str, invoke_llm: bool, print_citations: bool, min_grounding: float = 0.7) -> dict:
         docs, context = self.store.retrieve(query)
 
         prompt = SYSTEM_PROMPT.format(context=context, query=query)
@@ -107,5 +115,6 @@ class CodebaseRAG:
 
 # ── Entry point ────────────────────────────────────────────────
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
+    from app import app
+    load_dotenv()
+    app.run(host="127.0.0.1", port=5000, debug=False)

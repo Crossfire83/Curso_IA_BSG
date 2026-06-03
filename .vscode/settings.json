@@ -32,11 +32,10 @@
   "[json]": {
     "editor.tabSize": 2
   },
-  "cSpell.words": ["apigee", "Imei", "msisdn"],
   "geminicodeassist.project": "",
   "aws.telemetry": false,
   "amazonQ.telemetry": false,
   "kiroAgent.configureMCP": "Disabled",
   "snyk.advanced.autoSelectOrganization": false,
-  "snyk.advanced.additionalParameters": "--skip-unresolved=true --allow-missing"
+"snyk.advanced.additionalParameters": "--skip-unresolved=true --allow-missing"
 }

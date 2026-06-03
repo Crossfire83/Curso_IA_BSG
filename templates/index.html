@@ -1,0 +1,672 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codebase RAG Query</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #f4f5f7;
+        color: #1a1a2e;
+        min-height: 100vh;
+        padding: 2rem 1rem;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        color: #1a1a2e;
+      }
+
+      .container {
+        max-width: 860px;
+        margin: 0 auto;
+      }
+
+      .card {
+        background: #ffffff;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 500;
+        margin-bottom: 0.4rem;
+        color: #374151;
+      }
+
+      input[type="text"],
+      textarea {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-family: inherit;
+        background: #fafafa;
+        transition: border-color 0.15s;
+        resize: vertical;
+      }
+
+      input[type="text"]:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #4f6ef7;
+        background: #fff;
+      }
+
+      .field {
+        margin-bottom: 1rem;
+      }
+
+      .actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 1.25rem;
+      }
+
+      button {
+        padding: 0.5rem 1.25rem;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          opacity 0.15s;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      #submit-btn {
+        background: #4f6ef7;
+        color: #fff;
+      }
+
+      #submit-btn:hover:not(:disabled) {
+        background: #3a56d4;
+      }
+
+      #reload-btn {
+        background: #e5e7eb;
+        color: #374151;
+      }
+
+      #reload-btn:hover:not(:disabled) {
+        background: #d1d5db;
+      }
+
+      #results-panel {
+        min-height: 120px;
+      }
+
+      #results-panel:empty::before {
+        content: "Results will appear here after you submit a query.";
+        color: #9ca3af;
+        font-size: 0.9rem;
+        font-style: italic;
+      }
+
+      #answer-text {
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: inherit;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        margin-bottom: 1rem;
+      }
+
+      .citations-block {
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+      }
+
+      .citations-block summary {
+        cursor: pointer;
+        font-weight: 500;
+        color: #374151;
+        padding: 0.25rem 0;
+      }
+
+      .citations-block pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        padding: 0.75rem;
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+      }
+
+      .scores {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+      }
+
+      .score-item {
+        font-size: 0.875rem;
+        color: #374151;
+      }
+
+      .score-item strong {
+        color: #1a1a2e;
+      }
+
+      .flagged-warning {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+        border-radius: 4px;
+        padding: 0.35rem 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+      }
+
+      .issues-block,
+      .missing-files-block {
+        margin-bottom: 0.75rem;
+        font-size: 0.875rem;
+      }
+
+      .issues-block h4,
+      .missing-files-block h4 {
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-bottom: 0.35rem;
+        color: #374151;
+      }
+
+      .issues-block ul,
+      .missing-files-block ul {
+        list-style: disc;
+        padding-left: 1.25rem;
+        color: #4b5563;
+      }
+
+      .issues-block li,
+      .missing-files-block li {
+        margin-bottom: 0.2rem;
+      }
+
+      .error-msg {
+        color: #b91c1c;
+        background: #fef2f2;
+        border: 1px solid #fca5a5;
+        border-radius: 4px;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.9rem;
+      }
+
+      .warning-msg {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #92400e;
+        background: #fffbeb;
+        border: 1px solid #fcd34d;
+        border-radius: 4px;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.9rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .warning-close {
+        margin-left: auto;
+        padding: 0 0.3rem;
+        background: transparent;
+        border: none;
+        font-size: 1rem;
+        cursor: pointer;
+        color: #92400e;
+        opacity: 0.7;
+        line-height: 1;
+      }
+
+      .warning-close:hover {
+        opacity: 1;
+      }
+
+      #source-type-group {
+        display: flex;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+      }
+
+      .radio-label {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.9rem;
+        font-weight: 400;
+        color: #374151;
+        cursor: pointer;
+        margin-bottom: 0;
+      }
+
+      .radio-label input[type="radio"] {
+        width: auto;
+        cursor: pointer;
+      }
+
+      .optional {
+        font-weight: 400;
+        color: #9ca3af;
+        font-size: 0.8rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Codebase RAG Query</h1>
+
+      <div class="card">
+        <form id="query-form">
+          <!-- Source type selector -->
+          <div class="field">
+            Source type
+            <div id="source-type-group" role="radiogroup" aria-label="Source type">
+              <label class="radio-label">
+                <input type="radio" name="source_type" value="local" checked />
+                Local directory
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="source_type" value="s3" />
+                S3 bucket
+              </label>
+            </div>
+          </div>
+
+          <!-- Local fields (shown by default) -->
+          <div id="local-fields">
+            <div class="field">
+              <label for="source-dir">Source directory</label>
+              <input
+                id="source-dir"
+                name="source_dir"
+                type="text"
+                placeholder="/path/to/your/project"
+                required
+              />
+            </div>
+          </div>
+
+          <!-- S3 fields (hidden by default) -->
+          <div id="s3-fields" hidden>
+            <div class="field">
+              <label for="s3-bucket">Bucket name <span aria-hidden="true">*</span></label>
+              <input
+                id="s3-bucket"
+                name="bucket"
+                type="text"
+                placeholder="my-bucket"
+                minlength="3"
+                maxlength="63"
+                pattern="[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]"
+                required
+                autocomplete="off"
+              />
+            </div>
+            <div class="field">
+              <label for="s3-prefix">Key prefix <span class="optional">(optional)</span></label>
+              <input
+                id="s3-prefix"
+                name="prefix"
+                type="text"
+                placeholder="path/to/code"
+                maxlength="1024"
+              />
+            </div>
+            <div class="field">
+              <label for="s3-region">AWS region <span class="optional">(optional)</span></label>
+              <input
+                id="s3-region"
+                name="region"
+                type="text"
+                placeholder="us-west-1"
+              />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="query">Query</label>
+            <textarea id="query" name="query" rows="5">
+{{ standard_prompt }}</textarea
+            >
+          </div>
+
+          <div class="actions">
+            <button type="submit" id="submit-btn">Submit</button>
+            <button type="button" id="reload-btn">Reload / Clear cache</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <div id="results-panel"></div>
+      </div>
+    </div>
+
+    <script>
+      // ── Source type toggle ──────────────────────────────────────────────────
+      document.querySelectorAll('input[name="source_type"]').forEach(function (radio) {
+        radio.addEventListener('change', function () {
+          var isS3 = this.value === 's3';
+          document.getElementById('local-fields').hidden = isS3;
+          document.getElementById('s3-fields').hidden = !isS3;
+          document.getElementById('source-dir').required = !isS3;
+          document.getElementById('s3-bucket').required = isS3;
+        });
+      });
+      // ── End source type toggle ───────────────────────────────────────────────
+
+      // ── Task 4.2: SSE streaming submit ─────────────────────────────────────
+      (function () {
+        const form = document.getElementById('query-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const reloadBtn = document.getElementById('reload-btn');
+        const panel = document.getElementById('results-panel');
+
+        function setButtons(disabled) {
+          submitBtn.disabled = disabled;
+          reloadBtn.disabled = disabled;
+        }
+
+        form.addEventListener('submit', async function (e) {
+          e.preventDefault();
+          setButtons(true);
+
+          // Clear the results panel and create the streamed-answer element
+          panel.innerHTML = '';
+          const answerEl = document.createElement('pre');
+          answerEl.id = 'answer-text';
+          panel.appendChild(answerEl);
+
+          const formData = new FormData(form);
+
+          let response;
+          try {
+            response = await fetch('/ask', {
+              method: 'POST',
+              body: new URLSearchParams(formData),
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            });
+          } catch (fetchErr) {
+            panel.innerHTML = '';
+            const errEl = document.createElement('p');
+            errEl.className = 'error-msg';
+            errEl.textContent = 'Error: ' + fetchErr.message;
+            panel.appendChild(errEl);
+            setButtons(false);
+            return;
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          function processBuffer() {
+            const messages = buffer.split('\n\n');
+            buffer = messages.pop(); // keep incomplete last chunk
+
+            for (const message of messages) {
+              if (!message.trim()) continue;
+
+              const lines = message.split('\n');
+              let eventType = null;
+              let dataLine = null;
+
+              for (const line of lines) {
+                if (line.startsWith('event:')) {
+                  eventType = line.slice(6).trim();
+                } else if (line.startsWith('data:')) {
+                  dataLine = line.slice(5).trim();
+                }
+              }
+
+              if (dataLine === null) continue;
+
+              let parsed;
+              try {
+                parsed = JSON.parse(dataLine);
+              } catch (_) {
+                continue;
+              }
+
+              if (eventType === 'done') {
+                renderDone(parsed);
+              } else if (eventType === 'error') {
+                renderError(parsed.error || 'Unknown error');
+              } else if (eventType === 'warning') {
+                renderWarning(parsed.warning || 'Warning');
+              } else if (parsed.token != null) {
+                answerEl.textContent += parsed.token;
+              }
+            }
+          }
+
+          function renderDone(meta) {
+            // Citations
+            if (meta.docs) {
+              const details = document.createElement('details');
+              details.className = 'citations-block';
+              const summary = document.createElement('summary');
+              summary.textContent = 'Citations';
+              const pre = document.createElement('pre');
+              pre.textContent = meta.docs;
+              details.appendChild(summary);
+              details.appendChild(pre);
+              panel.appendChild(details);
+            }
+
+            // Scores
+            const scoresDiv = document.createElement('div');
+            scoresDiv.className = 'scores';
+            if (meta.grounding_score != null) {
+              const gs = document.createElement('p');
+              gs.className = 'score-item';
+              const gsLabel = document.createElement('strong');
+              gsLabel.textContent = 'Grounding score: ';
+              gs.appendChild(gsLabel);
+              gs.appendChild(document.createTextNode(Number(meta.grounding_score).toFixed(2)));
+              scoresDiv.appendChild(gs);
+            }
+            if (meta.completeness_score != null) {
+              const cs = document.createElement('p');
+              cs.className = 'score-item';
+              const csLabel = document.createElement('strong');
+              csLabel.textContent = 'Completeness score: ';
+              cs.appendChild(csLabel);
+              cs.appendChild(document.createTextNode(Number(meta.completeness_score).toFixed(2)));
+              scoresDiv.appendChild(cs);
+            }
+            if (scoresDiv.hasChildNodes()) panel.appendChild(scoresDiv);
+
+            // Flagged warning
+            if (meta.flagged) {
+              const warn = document.createElement('p');
+              warn.className = 'flagged-warning';
+              warn.textContent = '\u26a0 Flagged';
+              panel.appendChild(warn);
+            }
+
+            // Issues
+            if (Array.isArray(meta.issues) && meta.issues.length) {
+              const issuesDiv = document.createElement('div');
+              issuesDiv.className = 'issues-block';
+              const h4 = document.createElement('h4');
+              h4.textContent = 'Issues';
+              const ul = document.createElement('ul');
+              meta.issues.forEach(function (issue) {
+                const li = document.createElement('li');
+                li.textContent = issue;
+                ul.appendChild(li);
+              });
+              issuesDiv.appendChild(h4);
+              issuesDiv.appendChild(ul);
+              panel.appendChild(issuesDiv);
+            }
+
+            // Missing files
+            if (Array.isArray(meta.missing_files) && meta.missing_files.length) {
+              const mfDiv = document.createElement('div');
+              mfDiv.className = 'missing-files-block';
+              const h4 = document.createElement('h4');
+              h4.textContent = 'Missing files';
+              const ul = document.createElement('ul');
+              meta.missing_files.forEach(function (f) {
+                const li = document.createElement('li');
+                li.textContent = f;
+                ul.appendChild(li);
+              });
+              mfDiv.appendChild(h4);
+              mfDiv.appendChild(ul);
+              panel.appendChild(mfDiv);
+            }
+          }
+
+          function renderError(message) {
+            if (answerEl.parentNode && !answerEl.textContent) {
+              answerEl.remove();
+            }
+            const errEl = document.createElement('p');
+            errEl.className = 'error-msg';
+            errEl.textContent = 'Error: ' + message;
+            panel.appendChild(errEl);
+          }
+
+          function renderWarning(message) {
+            const warnEl = document.createElement('p');
+            warnEl.className = 'warning-msg';
+            warnEl.textContent = '\u26a0 ' + message;
+            const closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'warning-close';
+            closeBtn.setAttribute('aria-label', 'Dismiss warning');
+            closeBtn.textContent = '\u00d7';
+            closeBtn.addEventListener('click', function () { warnEl.remove(); });
+            warnEl.appendChild(closeBtn);
+            panel.insertBefore(warnEl, panel.firstChild);
+          }
+
+          // Read the SSE stream
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              processBuffer();
+            }
+            // Flush any remaining content
+            buffer += decoder.decode();
+            processBuffer();
+          } catch (streamErr) {
+            renderError(streamErr.message);
+          } finally {
+            setButtons(false);
+          }
+        });
+      })();
+      // ── End Task 4.2 ────────────────────────────────────────────────────────
+
+      // ── Task 4.3: Reload / Clear cache button ──────────────────────────────
+      (function () {
+        const reloadBtn = document.getElementById('reload-btn');
+        const reloadStatus = document.createElement('p');
+        reloadStatus.id = 'reload-status';
+        reloadStatus.style.cssText =
+          'margin-top:0.5rem;font-size:0.85rem;min-height:1.2em;';
+        reloadBtn.parentElement.parentElement.appendChild(reloadStatus);
+
+        function showReloadMsg(text, isError) {
+          reloadStatus.textContent = text;
+          reloadStatus.style.color = isError ? '#dc2626' : '#16a34a';
+          clearTimeout(reloadStatus._timer);
+          reloadStatus._timer = setTimeout(function () {
+            reloadStatus.textContent = '';
+          }, 3000);
+        }
+
+        reloadBtn.addEventListener('click', function () {
+          // Determine active source type
+          const sourceType = document.querySelector('input[name="source_type"]:checked').value;
+
+          let sourceDir;
+          if (sourceType === 's3') {
+            const bucket = document.getElementById('s3-bucket').value.trim();
+            const prefix = document.getElementById('s3-prefix').value.trim();
+            const region = document.getElementById('s3-region').value.trim() || 'us-west-1';
+            // Build cache key: s3://<bucket>/<prefix>?region=<region>  (omit /<prefix> when empty)
+            sourceDir = prefix
+              ? 's3://' + bucket + '/' + prefix + '?region=' + region
+              : 's3://' + bucket + '?region=' + region;
+          } else {
+            sourceDir = document.getElementById('source-dir').value;
+          }
+
+          const body = new URLSearchParams({ source_dir: sourceDir });
+
+          reloadBtn.disabled = true;
+
+          fetch('/reload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+          })
+            .then(function (response) {
+              if (response.ok) {
+                return response.json().then(function (data) {
+                  const cleared = data.cleared;
+                  showReloadMsg(
+                    'Cache cleared for: ' + (cleared || '(not cached)'),
+                    false,
+                  );
+                });
+              } else {
+                return response.json().then(function (data) {
+                  showReloadMsg(
+                    'Error: ' + (data.message || response.statusText),
+                    true,
+                  );
+                });
+              }
+            })
+            .catch(function (err) {
+              showReloadMsg('Network error: ' + err.message, true);
+            })
+            .finally(function () {
+              reloadBtn.disabled = false;
+            });
+        });
+      })();
+      // ── End Task 4.3 ────────────────────────────────────────────────────────
+    </script>
+  </body>
+</html>
