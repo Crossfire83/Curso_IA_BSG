@@ -41,20 +41,20 @@ Then install the python dependencies with:
 ### AWS
 
 1. Create your account in [AWS](https://aws.amazon.com/free/)
-   1. Create your access key. This will help us with the interconnection of cloud providers. (Azure to AWS)
-      1. Go to the menu on the top-right corner of your aws console screen.
-      2. Click on security credentials
-      3. Go to the Access Keys section
-      4. Click on `Create Access Key`
-      5. Copy all the values on a notepad or text editor or environment variables file. (follow the `.env.sample` file)
-   2. Create an S3 bucket. This will help us store our knowledge base
-      1. Setup a namespace for the bucket.
-      2. Disable ACLs.
-      3. Block public access.
-      4. Disable bucket versioning.
-      5. Configure default encryption.
-      6. Disable Object lock.
-   3. For the Bedrock Model, this project already uses Bedrock integration, so no additional setup is needed.
+2. Create your access key. This will help us with the interconnection of cloud providers. (Azure to AWS)
+   1. Go to the menu on the top-right corner of your aws console screen.
+   2. Click on security credentials
+   3. Go to the Access Keys section
+   4. Click on `Create Access Key`
+   5. Copy all the values on a notepad or text editor or environment variables file. (follow the `.env.sample` file)
+3. Create an S3 bucket. This will help us store our knowledge base
+   1. Setup a namespace for the bucket.
+   2. Disable ACLs.
+   3. Block public access.
+   4. Disable bucket versioning.
+   5. Configure default encryption.
+   6. Disable Object lock.
+4. For the Bedrock Model, this project already uses Bedrock integration, so no additional setup is needed.
 
 ### Azure
 
