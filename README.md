@@ -112,9 +112,16 @@ Then install the python dependencies with:
 4. Look for the "Deploy a container to an Azure Web App" and click on Configure.
 5. Commit changes.
 6. Go to you repository Settings.
-7. Look and click for the "Secrets and Variables" option at the left.
-8. Click on the "Actions" suboption.
-9. Click on the "New repository secret" button.
-10. The new secret should be named "AZURE_WEBAPP_PUBLISH_PROFILE" (without the qoutes).
-11. Copy the contents of the publish profile file from the last section and click on "Add secret".
-12. Now everytime you push to the main (or default) branch, your container will be built and deployed to your azure web app.
+   1. Create necessary Secrets
+      1. Look and click for the "Secrets and Variables" option at the left.
+      2. Click on the "Actions" suboption.
+      3. Click on the "New repository secret" button.
+      4. The new secret should be named "AZURE_WEBAPP_PUBLISH_PROFILE" (without the qoutes).
+      5. Copy the contents of the publish profile file from the last section and click on "Add secret".
+      6. Now everytime you push to the main (or default) branch, your container will be built and deployed to your azure web app.
+   2. Give Permissions to the Actions workflow
+      1. Find and click the "Actions" option at the left side of the settings page.
+      2. Click on the "General" suboption.
+      3. Find the "Workflow permissions" section.
+      4. Enable the "Read and write permissions" option.
+      5. Click on save.

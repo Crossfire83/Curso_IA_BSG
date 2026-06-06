@@ -7,9 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     APP_HOME=/workspace/app
 
-# Crear directorios de trabajo
-WORKDIR ${APP_HOME}
-
 # Instalar dependencias del sistema necesarias para OpenCV y PDF parsing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -22,13 +19,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Crear directorios de trabajo
+WORKDIR ${APP_HOME}
+
+# Crear grupo y usuario no root.
+RUN groupadd --gid 10001 appgroup && \
+    useradd --uid 10001 --gid appgroup --shell /bin/false --create-home appuser
+
 # Copiar archivos del proyecto
-COPY . ${APP_HOME}
+COPY --chown=appuser:appgroup . ${APP_HOME}
 
 # Instalar dependencias Python
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Exponer puerto 8000 para API FastAPI
+# Exponer puerto 8000 para Flask
 EXPOSE 8000
 
 # Comando de ejecución
