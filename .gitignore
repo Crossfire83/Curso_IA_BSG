@@ -1,7 +1,10 @@
 __pycache__/**
 tests/__pycache__/**
+.pytest_cache/**
 .kiro/**
 
 .env
 
 chroma_db/**
+
+.venv**/**

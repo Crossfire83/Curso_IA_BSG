@@ -19,7 +19,7 @@ export HF_TOKEN=<your_huggingface_token>
 
 Then, run the following script in your terminal
 
-For macOs:
+For macOs/linux:
 
 ```shell
 python3 -m venv .venv # create a virtual environment for your project
@@ -56,6 +56,13 @@ Then install the python dependencies with:
    6. Disable Object lock.
 4. For the Bedrock Model, this project already uses Bedrock integration, so no additional setup is needed.
 
+### Github
+
+1. Create a Personal Access Token (PAT) (Classic) on github.
+   1. Mark the "repo" and "read:packages" permissions.
+   2. Click on "Generate token" button at the bottom.
+   3. Copy the Personal Access Token generated in your favorite text editor.
+
 ### Azure
 
 1. Create your [Azure](https://portal.azure.com) account.
@@ -76,13 +83,38 @@ Then install the python dependencies with:
    3. Click "Next: Container >"
       1. Disable Sidecar support.
       2. Select image source: other container registries.
-      3. Access type: Public
-      4. Registry server URL: https://index.docker.io
-      5. Image and tag: <name_of_your_docker_container>:<version>
-      6. Startup command: gunicorn app:app
+      3. Access type: Private
+      4. Registry server URL: https://ghcr.io
+      5. Username: <your_github_username>
+      6. Password: <pat_created_on_github_section>
+      7. Image and tag: <name_of_your_docker_container>:<version>
+      8. Startup command: gunicorn app:app
    4. Click "Next: Networking >"
       1. Enable public access.
    5. Click "Next: Monitor + secure >"
    6. Click "Next: Tags >". (Optionally add the tags you want).
    7. Click "Next: Review + create >"
    8. Review the settings you entered and finally click "Create".
+   9. Go to your newly created web app from your home portal.
+      1. Open the Settings tree node at the left.
+      2. Click on Configuration.
+      3. Make sure the "SCM Basic Auth Publishing Credentials" and "FTP Basic Auth Publishing Credentials" options are enabled. (the first two options on the panel)
+      4. Click on "Apply" button at the bottom.
+      5. Click on the "Overview" Option at the left.
+      6. Click on "Download publish profile" from the Overview Screen at the top.
+      7. Save the file where you prefer.
+
+### Github & Github Actions
+
+1. Fork this Repository.
+2. Once forked, click on the Actions tab at the top.
+3. Look for the Deployment Section, click on "View All".
+4. Look for the "Deploy a container to an Azure Web App" and click on Configure.
+5. Commit changes.
+6. Go to you repository Settings.
+7. Look and click for the "Secrets and Variables" option at the left.
+8. Click on the "Actions" suboption.
+9. Click on the "New repository secret" button.
+10. The new secret should be named "AZURE_WEBAPP_PUBLISH_PROFILE" (without the qoutes).
+11. Copy the contents of the publish profile file from the last section and click on "Add secret".
+12. Now everytime you push to the main (or default) branch, your container will be built and deployed to your azure web app.
