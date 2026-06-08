@@ -62,4 +62,4 @@ USER appuser
 EXPOSE 8000
 
 # Comando de ejecución
-CMD ["gunicorn", "app:app"]
+CMD ["gunicorn", "--preload", "app:app"]

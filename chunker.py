@@ -13,8 +13,8 @@ class DocumentChunker:
     def __init__(
         self,
         whole_file_threshold: int = 8000,
-        large_chunk_size: int = 6000,
-        large_chunk_overlap: int = 1000,
+        large_chunk_size: int = 500,
+        large_chunk_overlap: int = 75,
     ):
         self.whole_file_threshold = whole_file_threshold
         self.large_splitter = RecursiveCharacterTextSplitter(

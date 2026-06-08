@@ -1,4 +1,4 @@
-"""S3 bucket integration for the Codebase RAG tool.
+"""S3 bucket integration for the Document RAG tool.
 
 This module provides S3FileCollector, which replicates the FileCollector
 interface but reads objects from an AWS S3 bucket instead of the local
@@ -8,12 +8,14 @@ filesystem.
 from __future__ import annotations
 
 import fnmatch
+import io
 import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from langchain_core.documents import Document
+from pypdf import PdfReader
 
 # ---------------------------------------------------------------------------
 # Module-level constants
@@ -44,7 +46,7 @@ class CredentialsError(Exception):
 
 @dataclass(frozen=True)
 class S3SourceConfig:
-    """Immutable value object describing an S3 codebase source.
+    """Immutable value object describing an S3 document source.
 
     Fields
     ------
@@ -262,15 +264,6 @@ class S3FileCollector:
             for p in self.exclude_patterns
         )
 
-    @staticmethod
-    def is_config_file(relative_key: str) -> bool:
-        """Return True if *relative_key* has a config-file extension.
-
-        Uses the same CONFIG_EXTENSIONS set as FileCollector.
-        """
-        from file_collector import CONFIG_EXTENSIONS
-        return Path(relative_key).suffix.lower() in CONFIG_EXTENSIONS
-
     def collect(self) -> list[Document]:
         """List and download S3 objects, returning LangChain Documents.
 
@@ -293,8 +286,8 @@ class S3FileCollector:
         -------
         list[Document]
             LangChain Documents with ``page_content`` set to the decoded object
-            body and ``metadata`` containing ``file`` (relative key) and
-            ``is_config`` (bool).  Returns an empty list when no objects exist
+            body and ``metadata`` containing ``file`` (relative key).
+            Returns an empty list when no objects exist
             under the prefix or all objects were excluded or failed to download.
 
         Raises
@@ -359,18 +352,36 @@ class S3FileCollector:
                     Bucket=self.config.bucket,
                     Key=full_key,
                 )
-                content = response["Body"].read().decode("utf-8", errors="replace")
+                pdf_bytes = response["Body"].read()
+
+                # Extract text from PDF using pypdf
+                reader = PdfReader(io.BytesIO(pdf_bytes))
+                pages_text = []
+                for page in reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        pages_text.append(text)
+
+                content = "\n\n".join(pages_text)
+
+                if not content.strip():
+                    logging.warning(
+                        "Skipping S3 object %r: no extractable text in PDF",
+                        full_key,
+                    )
+                    skipped += 1
+                    continue
+
                 docs.append(Document(
                     page_content=content,
                     metadata={
-                        "file": rel_key,
-                        "is_config": self.is_config_file(rel_key),
+                        "file": rel_key
                     },
                 ))
             except ClientError as exc:
                 logging.warning("Skipping S3 object %r: %s", full_key, exc)
                 skipped += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logging.warning("Skipping S3 object %r: %s", full_key, exc)
                 skipped += 1
 

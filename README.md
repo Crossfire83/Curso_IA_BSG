@@ -1,4 +1,4 @@
-# system-interconnectivity-rag
+# RAG BSG: Proyecto 1 - RAG Serverless Multinube
 
 ## Getting started
 
@@ -54,7 +54,11 @@ Then install the python dependencies with:
    4. Disable bucket versioning.
    5. Configure default encryption.
    6. Disable Object lock.
-4. For the Bedrock Model, this project already uses Bedrock integration, so no additional setup is needed.
+4. For the Bedrock Model, you need to submit a use case for first time usage. (If you have already used anthropic models on your AWS, you do not need to follow these steps)
+   1. Go to Amazon Bedrock.
+   2. Find the "Model catalog" option on the left panel.
+   3. Select any Anthropic model.
+   4. A notification will appear at the top, asking you to fill a use case. Click there and fill the use case form.
 
 ### Github
 
@@ -103,6 +107,10 @@ Then install the python dependencies with:
       5. Click on the "Overview" Option at the left.
       6. Click on "Download publish profile" from the Overview Screen at the top.
       7. Save the file where you prefer.
+   10. Setup environment variables
+       1. Find and click the "Settings" option on the left pane.
+       2. Find and click the "Environment variables" option below.
+       3. Make sure to configure the environment variables detailed on the `.env.sample` file.
 
 ### Github & Github Actions
 
@@ -125,3 +133,63 @@ Then install the python dependencies with:
       3. Find the "Workflow permissions" section.
       4. Enable the "Read and write permissions" option.
       5. Click on save.
+
+### Google Cloud
+
+1. Open [Google Cloud Platform](https://console.cloud.google.com/) and create an account
+2. On the top left corner, you'll see the project button, Click on it and create a project.
+3. API Keys & Service account
+   1. On the search bar, type Service Account and go there.
+   2. At the top of the page, theres a button named "Create Service Account". Click on it.
+   3. Give your service account a name, an id will be automatically assigned based on the given name.
+   4. Click on "Create and close" button at the bottom.
+   5. Add key.
+      1. Identify the row of your newly created service account and click on the 3 dots at the right of the table.
+      2. Click on the "Manage Keys" option.
+      3. Click on "Add key" at the bottom and select "Create new key".
+      4. Select "JSON" on the pop up and click "Create". Save the file in the location of your preference.
+      5. Encode the file contents into a base64 encoding. Copy the encoded value in the `GOOGLE_SA_CREDENTIALS_BASE64` environment variable. (Make sure you use a safe, non-online encoder)
+   6. Add Roles.
+      1. Click on the "Permissions" tab.
+      2. Click on "Manage Access" button.
+      3. Look for the "Storage Object User" role and select that role.
+      4. Click on "Add another role" button.
+      5. Look for the "Vector Search Service Agent" role and select that role.
+      6. Click on "Add another role" button.
+      7. Look for the "Vertex AI RAG Data Service Agent" role and select that role.
+      8. Click on Save.
+4. Google Cloud Storage (GCS)
+   1. On the search bar, type GCS and go there.
+   2. Create a new bucket and give it a name. Click on "Continue"
+   3. Select single region and select a region (preferrably to have a low CO2 emission and nearby the regions selected in Azure/AWS). Click on continue
+   4. Enable Hierarchical namespace. Click on Continue
+   5. Disable public access and Uniform Access Control. Click on continue.
+   6. Disable Soft delete policy, object versioning, bucket retention policy. Click on Create.
+5. Vector Search
+   1. On the search bar, type Vector Search and go there.
+   2. If you dont have them enabled, a notification will pop up. Click on Enable API's and enable the API's marked as disabled.
+   3. Select the same region you selected on step 4.3.
+   4. Create an Index
+      1. Click on "Create new index". Fill the required fields.
+      2. Select a GCS folder.
+      3. On the dimensions field, type in 768. (This applies for the selected model)
+      4. On the "Approximate neighbors count" field, type in 50. (top-k parameter)
+      5. On the "Update method" field, select Stream.
+      6. Click on "Create" button at the bottom.
+   5. Create index endpoints
+      1. Click on the tab at the top that says "Index endpoints"
+      2. Click on "Create new endpoint".
+      3. Write a name for your endpoint.
+      4. Select "Standard".
+      5. Click on "Create".
+   6. Deploy index.
+      1. Go to the "Indexes" tab again.
+      2. On the row that appears your newly created index on step 4, you'll see the "Deploy" button, click there.
+      3. Write a name for your deployment.
+      4. Select the index endpoint created in step 5
+      5. Choose Standard machine type.
+      6. Enable autoscaling
+      7. In minimum number of replicas, type in 1.
+      8. In maximum number of replicas, type in 5.
+      9. Click on "Deploy". (This step will take longer than 15 minutes.)
+6. Done, now you have everything you need for the deployment of this project. Make sure to commit your changes to the default branch of your repo so you can see the changes live on the internet.

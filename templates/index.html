@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Codebase RAG Query</title>
+    <title>Document RAG</title>
     <style>
       *,
       *::before,
@@ -123,7 +123,7 @@
       }
 
       #results-panel:empty::before {
-        content: "Results will appear here after you submit a query.";
+        content: "Los resultados apareceran aqui despues de que hagas una pregunta.";
         color: #9ca3af;
         font-size: 0.9rem;
         font-style: italic;
@@ -224,6 +224,30 @@
         font-size: 0.9rem;
       }
 
+      .spinner {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem 0;
+        font-size: 0.9rem;
+        color: #6b7280;
+      }
+
+      .spinner::before {
+        content: '';
+        width: 1.25rem;
+        height: 1.25rem;
+        border: 3px solid #e5e7eb;
+        border-top-color: #4f6ef7;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
       .warning-msg {
         display: flex;
         align-items: center;
@@ -251,6 +275,53 @@
 
       .warning-close:hover {
         opacity: 1;
+      }
+
+      /* ── Inline button spinner ──────────────────────────────────────────── */
+      .btn-spinner {
+        display: inline-block;
+        width: 0.9rem;
+        height: 0.9rem;
+        border: 2px solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        vertical-align: middle;
+        margin-right: 0.4rem;
+      }
+
+      /* ── Success toast ───────────────────────────────────────────────────── */
+      .success-toast {
+        position: fixed;
+        top: 2rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #ecfdf5;
+        border: 1px solid #6ee7b7;
+        border-radius: 8px;
+        padding: 1rem 1.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        z-index: 10000;
+        animation: slideDown 0.3s ease-out;
+      }
+
+      .success-toast .success-icon {
+        font-size: 1.5rem;
+        line-height: 1;
+      }
+
+      .success-toast .success-msg {
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: #065f46;
+      }
+
+      @keyframes slideDown {
+        from { opacity: 0; transform: translateX(-50%) translateY(-1rem); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
       }
 
       #source-type-group {
@@ -281,90 +352,110 @@
         color: #9ca3af;
         font-size: 0.8rem;
       }
+
+      .s3-bucket-info {
+        font-size: 0.9rem;
+        color: #6b7280;
+      }
+
+      .s3-bucket-info em {
+        font-style: italic;
+        color: #9ca3af;
+      }
+
+      #s3-file-list li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid #f3f4f6;
+        font-size: 0.875rem;
+      }
+
+      #s3-file-list li:last-child {
+        border-bottom: none;
+      }
+
+      .s3-delete-btn {
+        background: #fee2e2;
+        color: #b91c1c;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.8rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+      }
+
+      .s3-delete-btn:hover:not(:disabled) {
+        background: #fecaca;
+      }
+
+      .s3-toggle-btn {
+        background: transparent;
+        border: none;
+        font-size: 1rem;
+        cursor: pointer;
+        padding: 0.1rem 0.3rem;
+        color: #374151;
+        line-height: 1;
+        border-radius: 3px;
+      }
+
+      .s3-toggle-btn:hover {
+        background: #e5e7eb;
+      }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>Codebase RAG Query</h1>
+      <h1>Document RAG</h1>
 
       <div class="card">
         <form id="query-form">
-          <!-- Source type selector -->
-          <div class="field">
-            Source type
-            <div id="source-type-group" role="radiogroup" aria-label="Source type">
-              <label class="radio-label">
-                <input type="radio" name="source_type" value="local" checked />
-                Local directory
-              </label>
-              <label class="radio-label">
-                <input type="radio" name="source_type" value="s3" />
-                S3 bucket
-              </label>
-            </div>
-          </div>
+          <input type="hidden" name="source_type" value="s3">
 
-          <!-- Local fields (shown by default) -->
-          <div id="local-fields">
+          <!-- S3 fields (visible by default) -->
+          <div id="s3-fields">
+            <!-- Read-only bucket info -->
             <div class="field">
-              <label for="source-dir">Source directory</label>
-              <input
-                id="source-dir"
-                name="source_dir"
-                type="text"
-                placeholder="/path/to/your/project"
-                required
-              />
+              <p id="s3-bucket-info" class="s3-bucket-info" data-bucket="">Bucket: <em>loading…</em></p>
             </div>
-          </div>
 
-          <!-- S3 fields (hidden by default) -->
-          <div id="s3-fields" hidden>
-            <div class="field">
-              <label for="s3-bucket">Bucket name <span aria-hidden="true">*</span></label>
-              <input
-                id="s3-bucket"
-                name="bucket"
-                type="text"
-                placeholder="my-bucket"
-                minlength="3"
-                maxlength="63"
-                pattern="[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]"
-                required
-                autocomplete="off"
-              />
-            </div>
-            <div class="field">
-              <label for="s3-prefix">Key prefix <span class="optional">(optional)</span></label>
-              <input
-                id="s3-prefix"
-                name="prefix"
-                type="text"
-                placeholder="path/to/code"
-                maxlength="1024"
-              />
-            </div>
-            <div class="field">
-              <label for="s3-region">AWS region <span class="optional">(optional)</span></label>
-              <input
-                id="s3-region"
-                name="region"
-                type="text"
-                placeholder="us-west-1"
-              />
+            <!-- File manager -->
+            <div id="s3-file-manager">
+              <div class="field">
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <strong>Archivos en bucket (<span id="s3-file-count">0</span>)</strong>
+                  <button type="button" id="s3-toggle-btn" class="s3-toggle-btn" aria-label="Expand file list" aria-expanded="false">&#9656;</button>
+                </div>
+                <div id="s3-file-list-container" style="display:none;">
+                  <p id="s3-no-files" style="color:#6b7280;font-size:0.875rem;margin-top:0.5rem;">No hay archivos en el bucket.</p>
+                  <ul id="s3-file-list" style="list-style:none;padding:0;margin-top:0.5rem;">
+                    <!-- populated by JS: GET /s3/files -->
+                  </ul>
+                </div>
+              </div>
+
+              <div class="field">
+                <label for="s3-upload-input">Subir archivos</label>
+                <div id="s3-upload-form">
+                  <input id="s3-upload-input" type="file" multiple accept=".pdf,application/pdf">
+                  <button type="button" id="s3-upload-btn">Subir</button>
+                </div>
+                <p id="s3-upload-error" style="color:#b91c1c;font-size:0.85rem;margin-top:0.4rem;white-space:pre-line;"></p>
+              </div>
             </div>
           </div>
 
           <div class="field">
-            <label for="query">Query</label>
+            <label for="query">Pregunta</label>
             <textarea id="query" name="query" rows="5">
 {{ standard_prompt }}</textarea
             >
           </div>
 
           <div class="actions">
-            <button type="submit" id="submit-btn">Submit</button>
-            <button type="button" id="reload-btn">Reload / Clear cache</button>
+            <button type="submit" id="submit-btn">Preguntar</button>
+            <button type="button" id="reload-btn">Recargar cache</button>
           </div>
         </form>
       </div>
@@ -374,18 +465,269 @@
       </div>
     </div>
 
+    {% raw %}
     <script>
-      // ── Source type toggle ──────────────────────────────────────────────────
-      document.querySelectorAll('input[name="source_type"]').forEach(function (radio) {
-        radio.addEventListener('change', function () {
-          var isS3 = this.value === 's3';
-          document.getElementById('local-fields').hidden = isS3;
-          document.getElementById('s3-fields').hidden = !isS3;
-          document.getElementById('source-dir').required = !isS3;
-          document.getElementById('s3-bucket').required = isS3;
+      // ── PDF Upload Validation Constants & Function ────────────────────────────
+      var ALLOWED_EXTENSION = ".pdf";
+      var MAX_FILE_SIZE = 52428800; // 50 MB in bytes
+
+      /**
+       * Validate a list of files for extension and size.
+       * @param {FileList} files - Files from the input element
+       * @returns {{ valid: boolean, errors: string[] }}
+       */
+      function validateFiles(files) {
+        var errors = [];
+        for (const element of files) {
+          var file = element;
+          if (!file.name.toLowerCase().endsWith(ALLOWED_EXTENSION)) {
+            errors.push('"' + file.name + '" is not a PDF file.');
+          }
+          if (file.size > MAX_FILE_SIZE) {
+            errors.push('"' + file.name + '" exceeds the 50 MB size limit.');
+          }
+        }
+        return { valid: errors.length === 0, errors: errors };
+      }
+      // ── End PDF Upload Validation ─────────────────────────────────────────────
+
+      // ── Collapsible file list toggle ──────────────────────────────────────────
+      var _fileListCollapsed = true; // default: collapsed
+
+      function toggleFileList() {
+        _fileListCollapsed = !_fileListCollapsed;
+        applyFileListState();
+      }
+
+      function applyFileListState() {
+        var container = document.getElementById('s3-file-list-container');
+        var btn = document.getElementById('s3-toggle-btn');
+
+        if (_fileListCollapsed) {
+          container.style.display = 'none';
+          btn.innerHTML = '&#9656;'; // ▸
+          btn.setAttribute('aria-expanded', 'false');
+          btn.setAttribute('aria-label', 'Expand file list');
+        } else {
+          container.style.display = '';
+          btn.innerHTML = '&#9662;'; // ▾
+          btn.setAttribute('aria-expanded', 'true');
+          btn.setAttribute('aria-label', 'Collapse file list');
+        }
+      }
+      // ── End collapsible file list toggle ──────────────────────────────────────
+
+      document.getElementById('s3-toggle-btn').addEventListener('click', toggleFileList);
+
+      // ── S3 data loaders (stubs — implemented in tasks 9.2 & 9.3) ──────────
+      function loadBucketInfo() {
+        var el = document.getElementById('s3-bucket-info');
+        fetch('/s3/config')
+          .then(function (response) {
+            return response.json().then(function (data) {
+              if (response.ok) {
+                el.textContent = 'Bucket: ' + data.bucket;
+                el.dataset.bucket = data.bucket;
+              } else {
+                el.textContent = data.error || 'Unknown error';
+                el.dataset.bucket = '';
+              }
+            });
+          })
+          .catch(function (err) {
+            el.textContent = 'Error loading bucket info';
+            el.dataset.bucket = '';
+          });
+      }
+
+      function loadFileList() {
+        var fileList = document.getElementById('s3-file-list');
+        var noFiles = document.getElementById('s3-no-files');
+        var fileManager = document.getElementById('s3-file-manager');
+
+        fetch('/s3/files')
+          .then(function (response) {
+            if (!response.ok) {
+              return response.json().then(function (data) {
+                throw new Error(data.error || 'Failed to load file list');
+              });
+            }
+            return response.json();
+          })
+          .then(function (data) {
+            fileList.innerHTML = '';
+            var files = data.files || [];
+
+            var countEl = document.getElementById('s3-file-count');
+            if (countEl) countEl.textContent = files.length;
+
+            if (files.length === 0) {
+              noFiles.style.display = '';
+            } else {
+              noFiles.style.display = 'none';
+              files.forEach(function (key) {
+                var li = document.createElement('li');
+                var span = document.createElement('span');
+                span.textContent = key;
+                var btn = document.createElement('button');
+                btn.className = 's3-delete-btn';
+                btn.setAttribute('data-key', key);
+                btn.textContent = 'Delete';
+                li.appendChild(span);
+                li.appendChild(btn);
+                fileList.appendChild(li);
+              });
+            }
+          })
+          .catch(function (err) {
+            var errEl = document.createElement('p');
+            errEl.className = 'error-msg';
+            errEl.textContent = 'Error: ' + err.message;
+            fileManager.appendChild(errEl);
+          });
+      }
+      // ── End S3 data loaders ─────────────────────────────────────────────────
+
+      // ── Task 9.5: Delete button handler (event-delegated on #s3-file-list) ──
+      (function () {
+        var fileList = document.getElementById('s3-file-list');
+
+        fileList.addEventListener('click', function (event) {
+          var btn = event.target.closest('.s3-delete-btn');
+          if (!btn) return;
+
+          var key = btn.dataset.key;
+          if (!key) return;
+
+          if (!confirm('Delete ' + key + '?')) return;
+
+          fetch('/s3/files/' + key, { method: 'DELETE' })
+            .then(function (response) {
+              return response.json().then(function (data) {
+                if (response.ok) {
+                  // Remove the <li> from DOM
+                  var li = btn.closest('li');
+                  if (li) li.remove();
+                  // Update file count
+                  var countEl = document.getElementById('s3-file-count');
+                  if (countEl) countEl.textContent = fileList.children.length;
+                  // Show empty state if list is now empty
+                  var noFiles = document.getElementById('s3-no-files');
+                  if (fileList.children.length === 0 && noFiles) {
+                    noFiles.style.display = '';
+                  }
+                } else {
+                  // Display error message from server
+                  var errMsg = data.error || 'Failed to delete file.';
+                  var fileManager = document.getElementById('s3-file-manager');
+                  var existingErr = fileManager.querySelector('.s3-delete-error');
+                  if (existingErr) existingErr.remove();
+                  var errEl = document.createElement('p');
+                  errEl.className = 'error-msg s3-delete-error';
+                  errEl.textContent = 'Error: ' + errMsg;
+                  fileManager.appendChild(errEl);
+                }
+              });
+            })
+            .catch(function (err) {
+              // Network error — display generic message
+              var fileManager = document.getElementById('s3-file-manager');
+              var existingErr = fileManager.querySelector('.s3-delete-error');
+              if (existingErr) existingErr.remove();
+              var errEl = document.createElement('p');
+              errEl.className = 'error-msg s3-delete-error';
+              errEl.textContent = 'Error: Network error while deleting file.';
+              fileManager.appendChild(errEl);
+            });
         });
+      })();
+      // ── End Task 9.5 ────────────────────────────────────────────────────────
+
+
+
+      // ── DOMContentLoaded: load S3 data unconditionally ─────────────────────
+      document.addEventListener('DOMContentLoaded', function () {
+        loadBucketInfo();
+        loadFileList();
       });
-      // ── End source type toggle ───────────────────────────────────────────────
+      // ── End DOMContentLoaded ────────────────────────────────────────────────
+
+      // ── Task 9.4: Upload button handler ─────────────────────────────────
+      (function () {
+        var uploadBtn = document.getElementById('s3-upload-btn');
+        var uploadInput = document.getElementById('s3-upload-input');
+        var uploadError = document.getElementById('s3-upload-error');
+
+        function showUploadError(msg) {
+          uploadError.textContent = msg;
+          clearTimeout(uploadError._timer);
+          uploadError._timer = setTimeout(function () {
+            uploadError.textContent = '';
+          }, 5000);
+        }
+
+        function clearUploadError() {
+          uploadError.textContent = '';
+          clearTimeout(uploadError._timer);
+        }
+
+        uploadBtn.addEventListener('click', function () {
+          clearUploadError();
+
+          // Validate at least one file is selected
+          if (!uploadInput.files || uploadInput.files.length < 1) {
+            showUploadError('Please select at least one file to upload.');
+            return;
+          }
+
+          // Validate files for extension and size before uploading
+          var result = validateFiles(uploadInput.files);
+          if (!result.valid) {
+            uploadError.textContent = result.errors.join('\n');
+            return;
+          }
+
+          // Build FormData manually from the file input
+          var formData = new FormData();
+          for (const element of uploadInput.files) {
+            formData.append('files', element);
+          }
+
+          // Block the entire UI with spinner in button
+          _setAllControlsDisabled(true);
+          _showBtnSpinner(uploadBtn, 'Subiendo…');
+
+          fetch('/s3/files', {
+            method: 'POST',
+            body: formData
+            // Do NOT set Content-Type — let the browser set the multipart boundary
+          })
+            .then(function (response) {
+              return response.json().then(function (data) {
+                if (response.ok) {
+                  // Success: refresh file list and clear the input
+                  uploadInput.value = '';
+                  loadFileList();
+                  _hideBtnSpinner(uploadBtn);
+                  _showSuccessToast('¡La base de datos de documentos ha sido actualizada!');
+                } else {
+                  // Server error
+                  _hideBtnSpinner(uploadBtn);
+                  showUploadError(data.error || 'Upload failed.');
+                }
+              });
+            })
+            .catch(function (err) {
+              // Network error
+              _hideBtnSpinner(uploadBtn);
+              showUploadError('Network error: ' + err.message);
+            })
+            .finally(function () {
+              _setAllControlsDisabled(false);
+            });
+        });
+      })();
+      // ── End Task 9.4 ────────────────────────────────────────────────────────
 
       // ── Task 4.2: SSE streaming submit ─────────────────────────────────────
       (function () {
@@ -403,8 +745,13 @@
           e.preventDefault();
           setButtons(true);
 
-          // Clear the results panel and create the streamed-answer element
+          // Clear the results panel and show spinner
           panel.innerHTML = '';
+          const spinnerEl = document.createElement('div');
+          spinnerEl.className = 'spinner';
+          spinnerEl.textContent = 'Processing your question…';
+          panel.appendChild(spinnerEl);
+
           const answerEl = document.createElement('pre');
           answerEl.id = 'answer-text';
           panel.appendChild(answerEl);
@@ -467,20 +814,43 @@
               } else if (eventType === 'warning') {
                 renderWarning(parsed.warning || 'Warning');
               } else if (parsed.token != null) {
+                // Remove spinner and show answer area on first token
+                if (spinnerEl.parentNode) {
+                  spinnerEl.remove();
+                  panel.appendChild(answerEl);
+                }
                 answerEl.textContent += parsed.token;
               }
             }
           }
 
           function renderDone(meta) {
+            if (spinnerEl.parentNode) spinnerEl.remove();
             // Citations
             if (meta.docs) {
               const details = document.createElement('details');
               details.className = 'citations-block';
               const summary = document.createElement('summary');
-              summary.textContent = 'Citations';
+              summary.textContent = 'Referencias';
               const pre = document.createElement('pre');
-              pre.textContent = meta.docs;
+              // meta.docs is an array of {filename, token_count} objects
+              if (Array.isArray(meta.docs)) {
+                const seen = new Set();
+                const lines = meta.docs
+                  .filter(function (d) {
+                    if (seen.has(d.filename)) return false;
+                    seen.add(d.filename);
+                    return true;
+                  })
+                  .map(function (d) {
+                    return d.token_count
+                      ? '- ' + d.filename + ' (' + d.token_count + ' tokens)'
+                      : '- ' + d.filename;
+                  });
+                pre.textContent = lines.join('\n');
+              } else {
+                pre.textContent = String(meta.docs);
+              }
               details.appendChild(summary);
               details.appendChild(pre);
               panel.appendChild(details);
@@ -553,6 +923,7 @@
           }
 
           function renderError(message) {
+            if (spinnerEl.parentNode) spinnerEl.remove();
             if (answerEl.parentNode && !answerEl.textContent) {
               answerEl.remove();
             }
@@ -596,77 +967,102 @@
       })();
       // ── End Task 4.2 ────────────────────────────────────────────────────────
 
+      // ── Reload overlay helpers ──────────────────────────────────────────────
+      (function () {
+        /**
+         * Show a spinner inside a button, replacing its text.
+         * Stores the original text so it can be restored later.
+         */
+        globalThis._showBtnSpinner = function (btn, loadingText) {
+          btn._originalText = btn.textContent;
+          btn.innerHTML = '';
+          var spinner = document.createElement('span');
+          spinner.className = 'btn-spinner';
+          btn.appendChild(spinner);
+          btn.appendChild(document.createTextNode(loadingText || 'Procesando…'));
+        };
+
+        globalThis._hideBtnSpinner = function (btn) {
+          if (btn._originalText != null) {
+            btn.textContent = btn._originalText;
+            delete btn._originalText;
+          }
+        };
+
+        /**
+         * Show a friendly success toast, auto-dismisses after 4 seconds.
+         */
+        globalThis._showSuccessToast = function (message) {
+          var toast = document.createElement('div');
+          toast.className = 'success-toast';
+          var icon = document.createElement('span');
+          icon.className = 'success-icon';
+          icon.textContent = '✓';
+          var msg = document.createElement('span');
+          msg.className = 'success-msg';
+          msg.textContent = message || '¡La base de datos de documentos ha sido actualizada!';
+          toast.appendChild(icon);
+          toast.appendChild(msg);
+          document.body.appendChild(toast);
+          setTimeout(function () { toast.remove(); }, 4000);
+        };
+
+        /**
+         * Disable/enable all interactive controls.
+         */
+        globalThis._setAllControlsDisabled = function (disabled) {
+          var submitBtn = document.getElementById('submit-btn');
+          var reloadBtn = document.getElementById('reload-btn');
+          var uploadBtn = document.getElementById('s3-upload-btn');
+          var uploadInput = document.getElementById('s3-upload-input');
+          var queryField = document.getElementById('query');
+          if (submitBtn) submitBtn.disabled = disabled;
+          if (reloadBtn) reloadBtn.disabled = disabled;
+          if (uploadBtn) uploadBtn.disabled = disabled;
+          if (uploadInput) uploadInput.disabled = disabled;
+          if (queryField) queryField.disabled = disabled;
+        };
+      })();
+      // ── End Reload overlay helpers ────────────────────────────────────────────
+
       // ── Task 4.3: Reload / Clear cache button ──────────────────────────────
       (function () {
         const reloadBtn = document.getElementById('reload-btn');
-        const reloadStatus = document.createElement('p');
-        reloadStatus.id = 'reload-status';
-        reloadStatus.style.cssText =
-          'margin-top:0.5rem;font-size:0.85rem;min-height:1.2em;';
-        reloadBtn.parentElement.parentElement.appendChild(reloadStatus);
-
-        function showReloadMsg(text, isError) {
-          reloadStatus.textContent = text;
-          reloadStatus.style.color = isError ? '#dc2626' : '#16a34a';
-          clearTimeout(reloadStatus._timer);
-          reloadStatus._timer = setTimeout(function () {
-            reloadStatus.textContent = '';
-          }, 3000);
-        }
 
         reloadBtn.addEventListener('click', function () {
-          // Determine active source type
-          const sourceType = document.querySelector('input[name="source_type"]:checked').value;
-
-          let sourceDir;
-          if (sourceType === 's3') {
-            const bucket = document.getElementById('s3-bucket').value.trim();
-            const prefix = document.getElementById('s3-prefix').value.trim();
-            const region = document.getElementById('s3-region').value.trim() || 'us-west-1';
-            // Build cache key: s3://<bucket>/<prefix>?region=<region>  (omit /<prefix> when empty)
-            sourceDir = prefix
-              ? 's3://' + bucket + '/' + prefix + '?region=' + region
-              : 's3://' + bucket + '?region=' + region;
-          } else {
-            sourceDir = document.getElementById('source-dir').value;
-          }
-
-          const body = new URLSearchParams({ source_dir: sourceDir });
-
-          reloadBtn.disabled = true;
+          // Block the entire UI and show spinner in button
+          _setAllControlsDisabled(true);
+          _showBtnSpinner(reloadBtn, 'Recargando…');
 
           fetch('/reload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString(),
+            body: '',
           })
             .then(function (response) {
               if (response.ok) {
-                return response.json().then(function (data) {
-                  const cleared = data.cleared;
-                  showReloadMsg(
-                    'Cache cleared for: ' + (cleared || '(not cached)'),
-                    false,
-                  );
+                return response.json().then(function () {
+                  _hideBtnSpinner(reloadBtn);
+                  _showSuccessToast('¡La base de datos de documentos ha sido actualizada!');
                 });
               } else {
                 return response.json().then(function (data) {
-                  showReloadMsg(
-                    'Error: ' + (data.message || response.statusText),
-                    true,
-                  );
+                  _hideBtnSpinner(reloadBtn);
+                  alert('Error: ' + (data.error || response.statusText));
                 });
               }
             })
             .catch(function (err) {
-              showReloadMsg('Network error: ' + err.message, true);
+              _hideBtnSpinner(reloadBtn);
+              alert('Error de red: ' + err.message);
             })
             .finally(function () {
-              reloadBtn.disabled = false;
+              _setAllControlsDisabled(false);
             });
         });
       })();
       // ── End Task 4.3 ────────────────────────────────────────────────────────
     </script>
+    {% endraw %}
   </body>
 </html>

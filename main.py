@@ -1,11 +1,9 @@
-from file_collector import FileCollector
 from chunker import DocumentChunker
 from vector_store import VectorStore
 from llm_client import BedrockLLM
-from grounding import GroundingEvaluator
 from prompt_template import SYSTEM_PROMPT
-from exclude_patterns import EXCLUDE_PATTERNS
 from dotenv import load_dotenv
+from langchain_core.documents import Document
 
 # ── Configuration ──────────────────────────────────────────────
 LLM_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -14,103 +12,81 @@ other models available:
 - us.anthropic.claude-sonnet-4-20250514-v1:0
 """
 
-"""Orchestrates the full RAG pipeline: collect → chunk → embed → ask."""
-class CodebaseRAG:
+
+class DocumentRAG:
+    """Orchestrates the full RAG pipeline: collect → chunk → embed → ask.
+
+    Supports two initialization modes:
+      - With documents: indexes them into the vector store (on upload/reload)
+      - Without documents: connects to the existing vector store (on ask)
+    """
 
     def __init__(
         self,
-        source_dir: str | None = None,
-        exclude_patterns: list[str] | None = None,
         model: str = LLM_MODEL,
         region_name: str = "us-west-1",
-        documents=None,
+        documents: list[Document] | None = None,
     ):
-        # 1. Collect files — either from pre-collected documents or from disk
-        if documents is not None:
-            raw_docs = documents
-            print(f"Collected {len(raw_docs)} pre-loaded documents")
+        # LLM is always needed
+        self.llm = BedrockLLM(model=model, region_name=region_name)
+
+        if documents is not None and len(documents) > 0:
+            self._index_documents(documents)
         else:
-            if not source_dir:
-                raise ValueError("source_dir must be provided when documents is not given")
-            collector = FileCollector(source_dir, exclude_patterns)
-            raw_docs = collector.collect()
-            print(f"Collected {len(raw_docs)} files from {source_dir}")
+            self._connect_query_only()
 
-        # 2. Build lookup maps
-        self.file_content_map = {
-            doc.metadata["file"]: doc.page_content for doc in raw_docs
-        }
-        config_file_paths = {
-            doc.metadata["file"]
-            for doc in raw_docs
-            if doc.metadata.get("is_config")
-        }
-        print(f"  Config files identified: {len(config_file_paths)}")
+    def _index_documents(self, documents: list[Document]) -> None:
+        """Index documents into the vector store (called on upload/reload)."""
+        print(f"Indexing {len(documents)} document(s)...")
 
-        # 3. Chunk
+        # Chunk
         chunker = DocumentChunker()
-        chunks = chunker.chunk(raw_docs)
+        chunks = chunker.chunk(documents)
         print(f"  Chunks created: {len(chunks)}")
 
-        # 4. Vector store
-        self.store = VectorStore(
-            chunks=chunks,
-            file_content_map=self.file_content_map,
-            config_file_paths=config_file_paths,
-        )
-        print("Vector DB created successfully.")
+        # Vector store — index mode
+        self.store = VectorStore(chunks=chunks)
+        print("  Vector DB indexed successfully.")
 
-        # 5. LLM + grounding
-        self.llm = BedrockLLM(model=model, region_name=region_name)
-        self.grounding = GroundingEvaluator(
-            self.file_content_map,
-            structural_detector=self.store.structural_detector,
-        )
+    def _connect_query_only(self) -> None:
+        """Connect to the existing vector store without re-indexing (called on ask)."""
+        print("Connecting to existing vector store (query-only mode)...")
 
-    def ask(self, query: str, invoke_llm: bool, print_citations: bool, min_grounding: float = 0.7) -> dict:
-        docs, context = self.store.retrieve(query)
+        # Vector store — query-only mode (no chunks passed)
+        self.store = VectorStore()
+        print("  Vector store connected.")
+
+    def ask(self, query: str) -> dict:
+        citations, context = self.store.retrieve(query)
 
         prompt = SYSTEM_PROMPT.format(context=context, query=query)
 
-        if invoke_llm:
-            result = self.llm.invoke(prompt)
+        result = self.llm.invoke(prompt)
 
-            grounding_score, issues = self.grounding.evaluate(result)
-            completeness_score, missing_files = self.grounding.evaluate_completeness(result)
-        citations = self.grounding.build_citations(docs)
-
-        if invoke_llm:
-            if grounding_score < min_grounding:
-                final_answer = "I couldn't retrieve what you want."
-                flagged = True
-            else:
-                final_answer = f"{result}\n\nCitations:\n{citations}"
-                flagged = False
-
-            print(result)
-            print(f"Grounding Score: {grounding_score:.2f}")
-            print(f"Completeness Score: {completeness_score:.2f}")
-
-        if print_citations:
-            print(citations)
+        final_answer = f"{result}\n\nCitations:\n{self._format_citations(citations)}"
 
         response = {
+            "answer_raw": result,
+            "answer_final": final_answer,
             "docs": citations,
         }
 
-        # add invocation results to the response if the invocation was enabled
-        if invoke_llm:
-            response |= {
-                "answer_raw": result,
-                "answer_final": final_answer,
-                "grounding_score": grounding_score,
-                "completeness_score": completeness_score,
-                "missing_files": missing_files,
-                "flagged": flagged,
-                "issues": issues
-            }
-
         return response
+
+    @staticmethod
+    def _format_citations(docs: list[dict]) -> str:
+        refs = []
+        seen: set[str] = set()
+        for doc in docs:
+            key = doc["filename"]
+            if key not in seen:
+                seen.add(key)
+                token_count = doc.get("token_count")
+                if token_count:
+                    refs.append(f"- {key} ({token_count} tokens)")
+                else:
+                    refs.append(f"- {key}")
+        return "\n".join(sorted(refs))
 
 
 # ── Entry point ────────────────────────────────────────────────
