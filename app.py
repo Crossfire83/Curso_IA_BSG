@@ -314,6 +314,9 @@ def _ask_generator_s3(query: str) -> Generator[str, None, None]:
         meta = {
             "done": True,
             "docs": result.get("docs"),
+            "input_tokens": result.get("input_tokens"),
+            "output_tokens": result.get("output_tokens"),
+            "elapsed_seconds": result.get("elapsed_seconds"),
         }
         yield f"event: done\ndata: {json.dumps(meta)}\n\n"
 

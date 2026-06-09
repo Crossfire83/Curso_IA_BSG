@@ -1,21 +1,13 @@
 # RAG BSG: Proyecto 1 - RAG Serverless Multinube
 
+Para la version en español, click [aqui](/README_ES.md)
+
 ## Getting started
 
 - Verify your python installation with `python3 --version` for mac or for windows: `python --version`
   - If not installed, you have to install [Python](https://www.python.org/downloads/)
 - Verify pip is installed with `python3 -m pip --version` for mac or for windows: `python -m pip --version`
 - Install "Python" and "Python Debugger" extensions in your IDE.
-
-Make sure that you have the credentials file of AWS (~/.aws/credentials) and that you have access to bedrock and some models hosted there.
-
-Also, make sure you set up these environment variables:
-
-```shell
-export HF_HUB_ETAG_TIMEOUT=86400
-export HF_HUB_DOWNLOAD_TIMEOUT=86400
-export HF_TOKEN=<your_huggingface_token>
-```
 
 Then, run the following script in your terminal
 
@@ -43,16 +35,16 @@ Then install the python dependencies with:
 1. Create your account in [AWS](https://aws.amazon.com/free/)
 2. Create your access key. This will help us with the interconnection of cloud providers. (Azure to AWS)
    1. Go to the menu on the top-right corner of your aws console screen.
-   2. Click on security credentials
-   3. Go to the Access Keys section
-   4. Click on `Create Access Key`
+   2. Click on "security credentials"
+   3. Go to the "Access Keys" section
+   4. Click on "Create Access Key"
    5. Copy all the values on a notepad or text editor or environment variables file. (follow the `.env.sample` file)
 3. Create an S3 bucket. This will help us store our knowledge base
    1. Setup a namespace for the bucket.
    2. Disable ACLs.
    3. Block public access.
    4. Disable bucket versioning.
-   5. Configure default encryption.
+   5. Select default encryption.
    6. Disable Object lock.
 4. For the Bedrock Model, you need to submit a use case for first time usage. (If you have already used anthropic models on your AWS, you do not need to follow these steps)
    1. Go to Amazon Bedrock.
@@ -62,10 +54,19 @@ Then install the python dependencies with:
 
 ### Github
 
-1. Create a Personal Access Token (PAT) (Classic) on github.
-   1. Mark the "repo" and "read:packages" permissions.
-   2. Click on "Generate token" button at the bottom.
-   3. Copy the Personal Access Token generated in your favorite text editor.
+1. Create your account in [Github](https://github.com/)
+2. Create a Personal Access Token
+   1. Click on your profile icon at the top-right corner of the page
+   2. Click on the "Settings" option once the menu pops-up
+   3. Click on "Developer Settings" on the left menu at the bottom
+   4. Click on "Personal Access Tokens" on the left menu at the bottom
+   5. Click on "Tokens (classic)"
+   6. Click on the "Generate new token" button at the top-right corner of the page.
+   7. Click on the "Generate new token (classic)" option.
+   8. Give the token a name.
+   9. Mark the "repo" and "read:packages" permissions.
+   10. Click on "Generate token" button at the bottom.
+   11. Copy the Personal Access Token generated in your favorite text editor.
 
 ### Azure
 
@@ -98,8 +99,8 @@ Then install the python dependencies with:
    5. Click "Next: Monitor + secure >"
    6. Click "Next: Tags >". (Optionally add the tags you want).
    7. Click "Next: Review + create >"
-   8. Review the settings you entered and finally click "Create".
-   9. Go to your newly created web app from your home portal.
+      1. Review the settings you entered and finally click "Create".
+   8. Go to your newly created web app from your home portal.
       1. Open the Settings tree node at the left.
       2. Click on Configuration.
       3. Make sure the "SCM Basic Auth Publishing Credentials" and "FTP Basic Auth Publishing Credentials" options are enabled. (the first two options on the panel)
@@ -107,10 +108,10 @@ Then install the python dependencies with:
       5. Click on the "Overview" Option at the left.
       6. Click on "Download publish profile" from the Overview Screen at the top.
       7. Save the file where you prefer.
-   10. Setup environment variables
-       1. Find and click the "Settings" option on the left pane.
-       2. Find and click the "Environment variables" option below.
-       3. Make sure to configure the environment variables detailed on the `.env.sample` file.
+   9. Setup environment variables
+      1. Find and click the "Settings" option on the left pane.
+      2. Find and click the "Environment variables" option below.
+      3. Make sure to configure the environment variables detailed on the `.env.sample` file.
 
 ### Github & Github Actions
 
@@ -124,7 +125,7 @@ Then install the python dependencies with:
       1. Look and click for the "Secrets and Variables" option at the left.
       2. Click on the "Actions" suboption.
       3. Click on the "New repository secret" button.
-      4. The new secret should be named "AZURE_WEBAPP_PUBLISH_PROFILE" (without the qoutes).
+      4. The new secret should be named `AZURE_WEBAPP_PUBLISH_PROFILE`.
       5. Copy the contents of the publish profile file from the last section and click on "Add secret".
       6. Now everytime you push to the main (or default) branch, your container will be built and deployed to your azure web app.
    2. Give Permissions to the Actions workflow
@@ -192,4 +193,5 @@ Then install the python dependencies with:
       7. In minimum number of replicas, type in 1.
       8. In maximum number of replicas, type in 5.
       9. Click on "Deploy". (This step will take longer than 15 minutes.)
+   7. Fill the remaining secrets. Make sure you fill all the secrets that start with `GOOGLE` or `GCP` to start using this.
 6. Done, now you have everything you need for the deployment of this project. Make sure to commit your changes to the default branch of your repo so you can see the changes live on the internet.

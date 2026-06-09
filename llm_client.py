@@ -25,7 +25,12 @@ class BedrockLLM:
             region_name=region_name,
             config=config)
 
-    def invoke(self, prompt: str) -> str:
+    def invoke(self, prompt: str) -> dict:
+        """Invoke the model and return text + usage metadata.
+
+        Returns:
+            dict with keys: text, input_tokens, output_tokens
+        """
         response = self.client.invoke_model(
             modelId=self.model,
             contentType="application/json",
@@ -42,9 +47,11 @@ class BedrockLLM:
         result = json.loads(response["body"].read())
 
         usage = result.get("usage", {})
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
         print(
-            f"Tokens — input: {usage.get('input_tokens', '?')}, "
-            f"output: {usage.get('output_tokens', '?')}"
+            f"Tokens — input: {input_tokens}, "
+            f"output: {output_tokens}"
         )
 
         stop_reason = result.get("stop_reason")
@@ -54,4 +61,8 @@ class BedrockLLM:
             if stop_reason != "end_turn":
                 print(f"Stop reason: {stop_reason}")
 
-        return result["content"][0]["text"]
+        return {
+            "text": result["content"][0]["text"],
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+        }

@@ -4,6 +4,7 @@ from llm_client import BedrockLLM
 from prompt_template import SYSTEM_PROMPT
 from dotenv import load_dotenv
 from langchain_core.documents import Document
+import time
 
 # ── Configuration ──────────────────────────────────────────────
 LLM_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
@@ -61,14 +62,20 @@ class DocumentRAG:
 
         prompt = SYSTEM_PROMPT.format(context=context, query=query)
 
-        result = self.llm.invoke(prompt)
+        start_time = time.time()
+        llm_result = self.llm.invoke(prompt)
+        elapsed = time.time() - start_time
 
-        final_answer = f"{result}\n\nCitations:\n{self._format_citations(citations)}"
+        result_text = llm_result["text"]
+        final_answer = f"{result_text}"
 
         response = {
-            "answer_raw": result,
+            "answer_raw": result_text,
             "answer_final": final_answer,
             "docs": citations,
+            "input_tokens": llm_result["input_tokens"],
+            "output_tokens": llm_result["output_tokens"],
+            "elapsed_seconds": round(elapsed, 2),
         }
 
         return response

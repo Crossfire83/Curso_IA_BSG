@@ -130,12 +130,99 @@
       }
 
       #answer-text {
-        white-space: pre-wrap;
         word-break: break-word;
         font-family: inherit;
         font-size: 0.9rem;
         line-height: 1.6;
         margin-bottom: 1rem;
+      }
+
+      /* ── Markdown rendered content styles ──────────────────────────────── */
+      #answer-text h1,
+      #answer-text h2,
+      #answer-text h3,
+      #answer-text h4 {
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #1a1a2e;
+      }
+
+      #answer-text h1 { font-size: 1.3rem; }
+      #answer-text h2 { font-size: 1.15rem; }
+      #answer-text h3 { font-size: 1.05rem; }
+
+      #answer-text p {
+        margin-bottom: 0.75rem;
+      }
+
+      #answer-text ul,
+      #answer-text ol {
+        padding-left: 1.5rem;
+        margin-bottom: 0.75rem;
+      }
+
+      #answer-text li {
+        margin-bottom: 0.3rem;
+      }
+
+      #answer-text code {
+        background: #f3f4f6;
+        padding: 0.15rem 0.4rem;
+        border-radius: 3px;
+        font-size: 0.85rem;
+        font-family: 'Consolas', 'Monaco', monospace;
+      }
+
+      #answer-text pre {
+        background: #1e1e2e;
+        color: #cdd6f4;
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin-bottom: 0.75rem;
+      }
+
+      #answer-text pre code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: 0.85rem;
+      }
+
+      #answer-text blockquote {
+        border-left: 3px solid #4f6ef7;
+        padding-left: 1rem;
+        margin: 0.75rem 0;
+        color: #4b5563;
+      }
+
+      #answer-text table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 0.75rem;
+        font-size: 0.85rem;
+      }
+
+      #answer-text th,
+      #answer-text td {
+        border: 1px solid #e5e7eb;
+        padding: 0.4rem 0.6rem;
+        text-align: left;
+      }
+
+      #answer-text th {
+        background: #f9fafb;
+        font-weight: 600;
+      }
+
+      #answer-text strong {
+        font-weight: 600;
+      }
+
+      #answer-text a {
+        color: #4f6ef7;
+        text-decoration: underline;
       }
 
       .citations-block {
@@ -404,6 +491,7 @@
         background: #e5e7eb;
       }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   </head>
   <body>
     <div class="container">
@@ -752,9 +840,12 @@
           spinnerEl.textContent = 'Processing your question…';
           panel.appendChild(spinnerEl);
 
-          const answerEl = document.createElement('pre');
+          const answerEl = document.createElement('div');
           answerEl.id = 'answer-text';
           panel.appendChild(answerEl);
+
+          // Buffer to accumulate raw markdown text for progressive rendering
+          let rawAnswer = '';
 
           const formData = new FormData(form);
 
@@ -819,7 +910,8 @@
                   spinnerEl.remove();
                   panel.appendChild(answerEl);
                 }
-                answerEl.textContent += parsed.token;
+                rawAnswer += parsed.token;
+                answerEl.innerHTML = marked.parse(rawAnswer);
               }
             }
           }
@@ -878,6 +970,67 @@
               scoresDiv.appendChild(cs);
             }
             if (scoresDiv.hasChildNodes()) panel.appendChild(scoresDiv);
+
+            // Token usage & response time
+            if (meta.input_tokens != null || meta.output_tokens != null || meta.elapsed_seconds != null) {
+              const statsDiv = document.createElement('div');
+              statsDiv.className = 'scores';
+              if (meta.input_tokens != null) {
+                const it = document.createElement('p');
+                it.className = 'score-item';
+                const itLabel = document.createElement('strong');
+                itLabel.textContent = 'Input tokens: ';
+                it.appendChild(itLabel);
+                it.appendChild(document.createTextNode(meta.input_tokens.toLocaleString()));
+                statsDiv.appendChild(it);
+              }
+              if (meta.output_tokens != null) {
+                const ot = document.createElement('p');
+                ot.className = 'score-item';
+                const otLabel = document.createElement('strong');
+                otLabel.textContent = 'Output tokens: ';
+                ot.appendChild(otLabel);
+                ot.appendChild(document.createTextNode(meta.output_tokens.toLocaleString()));
+                statsDiv.appendChild(ot);
+              }
+              if (meta.elapsed_seconds != null) {
+                const et = document.createElement('p');
+                et.className = 'score-item';
+                const etLabel = document.createElement('strong');
+                etLabel.textContent = 'Tiempo de respuesta: ';
+                et.appendChild(etLabel);
+                et.appendChild(document.createTextNode(meta.elapsed_seconds + 's'));
+                statsDiv.appendChild(et);
+              }
+              // Cost calculation: $3.00/1M input tokens, $15.00/1M output tokens
+              if (meta.input_tokens != null && meta.output_tokens != null) {
+                const inputCost = (meta.input_tokens / 1_000_000) * 3;
+                const outputCost = (meta.output_tokens / 1_000_000) * 15;
+                const totalCost = inputCost + outputCost;
+                const icEl = document.createElement('p');
+                icEl.className = 'score-item';
+                const icLabel = document.createElement('strong');
+                icLabel.textContent = 'Costo input: ';
+                icEl.appendChild(icLabel);
+                icEl.appendChild(document.createTextNode('$' + inputCost.toFixed(4) + ' USD'));
+                statsDiv.appendChild(icEl);
+                const ocEl = document.createElement('p');
+                ocEl.className = 'score-item';
+                const ocLabel = document.createElement('strong');
+                ocLabel.textContent = 'Costo output: ';
+                ocEl.appendChild(ocLabel);
+                ocEl.appendChild(document.createTextNode('$' + outputCost.toFixed(4) + ' USD'));
+                statsDiv.appendChild(ocEl);
+                const costEl = document.createElement('p');
+                costEl.className = 'score-item';
+                const costLabel = document.createElement('strong');
+                costLabel.textContent = 'Costo total: ';
+                costEl.appendChild(costLabel);
+                costEl.appendChild(document.createTextNode('$' + totalCost.toFixed(4) + ' USD'));
+                statsDiv.appendChild(costEl);
+              }
+              panel.appendChild(statsDiv);
+            }
 
             // Flagged warning
             if (meta.flagged) {
