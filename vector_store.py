@@ -58,7 +58,7 @@ class VectorStore:
         chunks: list[Document] | None = None,
         persist_directory: str = "./chroma_db",
         embedding_model: str = "nomic-embed-text",
-        retriever_k: int = 100,
+        retriever_k: int = 50,
     ):
         """Initialize the vector store.
 

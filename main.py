@@ -51,13 +51,17 @@ class DocumentRAG:
         print("  Vector store connected.")
 
     def ask(self, query: str) -> dict:
+        retrieval_start = time.time()
         citations, context = self.store.retrieve(query)
+        retrieval_elapsed = time.time() - retrieval_start
 
         prompt = SYSTEM_PROMPT.format(context=context, query=query)
 
-        start_time = time.time()
+        llm_start = time.time()
         llm_result = self.llm.invoke(prompt)
-        elapsed = time.time() - start_time
+        llm_elapsed = time.time() - llm_start
+
+        total_elapsed = retrieval_elapsed + llm_elapsed
 
         result_text = llm_result["text"]
         final_answer = f"{result_text}"
@@ -68,7 +72,9 @@ class DocumentRAG:
             "docs": citations,
             "input_tokens": llm_result["input_tokens"],
             "output_tokens": llm_result["output_tokens"],
-            "elapsed_seconds": round(elapsed, 2),
+            "elapsed_seconds": round(total_elapsed, 2),
+            "retrieval_seconds": round(retrieval_elapsed, 2),
+            "llm_seconds": round(llm_elapsed, 2),
         }
 
         return response

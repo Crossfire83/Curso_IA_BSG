@@ -1013,9 +1013,36 @@
             if (scoresDiv.hasChildNodes()) panel.appendChild(scoresDiv);
 
             // Token usage & response time
-            if (meta.input_tokens != null || meta.output_tokens != null || meta.elapsed_seconds != null) {
+            if (meta.input_tokens != null || meta.output_tokens != null || meta.elapsed_seconds != null || meta.retrieval_seconds != null || meta.llm_seconds != null) {
               const statsDiv = document.createElement('div');
               statsDiv.className = 'scores';
+              if (meta.retrieval_seconds != null) {
+                const rt = document.createElement('p');
+                rt.className = 'score-item';
+                const rtLabel = document.createElement('strong');
+                rtLabel.textContent = 'Tiempo de retrieval(GCP): ';
+                rt.appendChild(rtLabel);
+                rt.appendChild(document.createTextNode(meta.retrieval_seconds + 's'));
+                statsDiv.appendChild(rt);
+              }
+              if (meta.llm_seconds != null) {
+                const lt = document.createElement('p');
+                lt.className = 'score-item';
+                const ltLabel = document.createElement('strong');
+                ltLabel.textContent = 'Tiempo de LLM(AWS): ';
+                lt.appendChild(ltLabel);
+                lt.appendChild(document.createTextNode(meta.llm_seconds + 's'));
+                statsDiv.appendChild(lt);
+              }
+              if (meta.elapsed_seconds != null) {
+                const et = document.createElement('p');
+                et.className = 'score-item';
+                const etLabel = document.createElement('strong');
+                etLabel.textContent = 'Tiempo total: ';
+                et.appendChild(etLabel);
+                et.appendChild(document.createTextNode(meta.elapsed_seconds + 's'));
+                statsDiv.appendChild(et);
+              }
               if (meta.input_tokens != null) {
                 const it = document.createElement('p');
                 it.className = 'score-item';
@@ -1033,15 +1060,6 @@
                 ot.appendChild(otLabel);
                 ot.appendChild(document.createTextNode(meta.output_tokens.toLocaleString()));
                 statsDiv.appendChild(ot);
-              }
-              if (meta.elapsed_seconds != null) {
-                const et = document.createElement('p');
-                et.className = 'score-item';
-                const etLabel = document.createElement('strong');
-                etLabel.textContent = 'Tiempo de respuesta: ';
-                et.appendChild(etLabel);
-                et.appendChild(document.createTextNode(meta.elapsed_seconds + 's'));
-                statsDiv.appendChild(et);
               }
               // Cost calculation: $3.00/1M input tokens, $15.00/1M output tokens
               if (meta.input_tokens != null && meta.output_tokens != null) {
