@@ -245,10 +245,11 @@ Luego instala las dependencias de Python con:
    4. Crea un Índice
       1. Haz clic en "Crear nuevo índice". Completa los campos requeridos
       2. Selecciona una carpeta de GCS
-      3. En el campo de dimensiones, escribe 768 (Esto aplica para el modelo seleccionado)
-      4. En el campo "Approximate neighbors count", escribe 50 (parámetro top-k)
-      5. En el campo "Update method", selecciona Stream
-      6. Haz clic en el botón "Crear" en la parte inferior
+      3. En el campo de dimensiones, escribe 128 (Esto aplica para el modelo seleccionado)
+      4. En el campo "Approximate neighbors count", escribe 500 (parámetro top-k)
+      5. En el campo "Update method", selecciona Batch
+      6. En el campo "Shard Size", selecciona Small
+      7. Haz clic en el botón "Crear" en la parte inferior
    5. Crea endpoints de índice
       1. Haz clic en la pestaña superior que dice "Index endpoints"
       2. Haz clic en "Create new endpoint"
@@ -263,7 +264,7 @@ Luego instala las dependencias de Python con:
       5. Elige el tipo de máquina Standard
       6. Habilita el autoescalado
       7. En el número mínimo de réplicas, escribe 1
-      8. En el número máximo de réplicas, escribe 5
+      8. En el número máximo de réplicas, escribe 1
       9. Haz clic en "Deploy". (Este paso tardará más de 15 minutos)
    7. Llena los secretos faltantes. Asegurate de llenar todos los secretos que empiecen con `GOOGLE` o `GCP` para empezar a usar estos servicios.
       1. Vete a tu web app creada en azure y ve a la seccion de variables de ambiente.

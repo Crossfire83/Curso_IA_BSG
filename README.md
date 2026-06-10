@@ -247,10 +247,11 @@ Then install the python dependencies with:
    4. Create an Index
       1. Click on "Create new index". Fill the required fields.
       2. Select a GCS folder.
-      3. On the dimensions field, type in 768. (This applies for the selected model)
-      4. On the "Approximate neighbors count" field, type in 50. (top-k parameter)
-      5. On the "Update method" field, select Stream.
-      6. Click on "Create" button at the bottom.
+      3. On the dimensions field, type in 128. (This applies for the selected model)
+      4. On the "Approximate neighbors count" field, type in 500. (top-k parameter)
+      5. On the "Update method" field, select Batch.
+      6. On the "Shard Size" field, select Small.
+      7. Click on "Create" button at the bottom.
    5. Create index endpoints
       1. Click on the tab at the top that says "Index endpoints"
       2. Click on "Create new endpoint".
@@ -265,7 +266,7 @@ Then install the python dependencies with:
       5. Choose Standard machine type.
       6. Enable autoscaling
       7. In minimum number of replicas, type in 1.
-      8. In maximum number of replicas, type in 5.
+      8. In maximum number of replicas, type in 1.
       9. Click on "Deploy". (This step will take longer than 15 minutes.)
    7. Fill the remaining secrets. Make sure you fill all the secrets that start with `GOOGLE` or `GCP` to start using this.
 6. Done, now you have everything you need for the deployment of this project. Make sure to commit your changes to the default branch of your repo so you can see the changes live on the internet.

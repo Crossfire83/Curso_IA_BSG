@@ -2,6 +2,9 @@ import os
 import base64
 import json
 import shutil
+import uuid
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -165,7 +168,7 @@ class VectorStore:
             model="text-multilingual-embedding-002",
             project=project_id,
             vertexai=True,
-            output_dimensionality=768
+            output_dimensionality=128
         )
 
         self.db = VectorSearchVectorStore.from_components(
@@ -175,36 +178,168 @@ class VectorStore:
             index_id=index_id,
             endpoint_id=endpoint_id,
             embedding=embedding_model,
-            stream_update=True,
+            stream_update=False,
         )
 
         # Only upsert when in index mode
         if chunks is not None:
-            batch_size = 1000
+            # Bypass langchain's add_texts to avoid the INVALID_SPARSE_EMBEDDING
+            # bug (it serializes empty sparse embeddings in batch mode).
+            # Instead, we embed texts, build the batch JSON ourselves, upload to
+            # GCS, and call update_embeddings directly.
             texts = [doc.page_content for doc in chunks]
-            metadatas = [doc.metadata for doc in chunks]
-            for i in range(0, len(texts), batch_size):
-                self.db.add_texts(
-                    texts=texts[i:i + batch_size],
-                    metadatas=metadatas[i:i + batch_size],
-                )
-                print(f"    Indexed batch {i // batch_size + 1} "
-                      f"({min(i + batch_size, len(texts))}/{len(texts)} chunks)")
+            # Keep only string metadata to avoid MULTIPLE_VALUES errors
+            # from numeric fields being sent as conflicting restricts.
+            metadatas = [
+                {k: v for k, v in doc.metadata.items() if isinstance(v, str)}
+                for doc in chunks
+            ]
+
+            # Track the new prefix so we can exclude it from cleanup
+            new_prefix = self._batch_index(
+                texts=texts,
+                metadatas=metadatas,
+                embedding_model=embedding_model,
+                gcs_bucket=gcs_bucket,
+                index_id=index_id,
+            )
+
+            # Clean old files in the background (after index is already updated)
+            threading.Thread(
+                target=self._clear_gcs_staging,
+                args=(gcs_bucket, new_prefix),
+                daemon=True,
+            ).start()
 
 
         self.retriever = self.db.as_retriever(search_kwargs={"k": retriever_k})
 
+    def _clear_gcs_staging(self, bucket_name: str, exclude_prefix: str) -> None:
+        """Delete old staged embedding files from the GCS bucket in the background.
+
+        Runs after the index update so it doesn't block the user. Uses parallel
+        batch deletes for speed. Skips blobs under `exclude_prefix` (the current
+        indexing batch that the index is actively using).
+        """
+        from google.cloud import storage
+
+        print(f"  [background] Clearing old files from gs://{bucket_name}/ ...")
+
+        try:
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            blobs = [
+                b for b in bucket.list_blobs()
+                if not b.name.startswith(exclude_prefix)
+            ]
+
+            if not blobs:
+                print("    [background] No old files to clean.")
+                return
+
+            # Parallel batch deletion (batches of 1000, up to 8 threads)
+            batch_size = 1000
+            batches = [
+                blobs[i:i + batch_size]
+                for i in range(0, len(blobs), batch_size)
+            ]
+
+            def delete_batch(batch):
+                bucket.delete_blobs(batch)
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                executor.map(delete_batch, batches)
+
+            print(f"    [background] Deleted {len(blobs)} old file(s) from GCS bucket.")
+        except Exception as exc:
+            # Log but don't crash — this is best-effort background cleanup
+            print(f"    [background] GCS cleanup error: {exc}")
+
+    def _batch_index(
+        self,
+        texts: list[str],
+        metadatas: list[dict],
+        embedding_model,
+        gcs_bucket: str,
+        index_id: str,
+    ) -> str:
+        """Index chunks via batch update, writing clean JSON to GCS.
+
+        This bypasses langchain's add_texts to avoid the
+        INVALID_SPARSE_EMBEDDING bug where empty sparse embedding objects
+        get serialized into the batch JSON and rejected by the index.
+
+        We also store documents in GCS (for retrieval) via the vector store's
+        internal document storage, matching what add_texts would do.
+
+        Returns the GCS prefix used for this batch (so cleanup can skip it).
+        """
+        from google.cloud import aiplatform, storage
+
+        print(f"    Embedding {len(texts)} chunk(s)...")
+        embeddings = embedding_model.embed_documents(texts)
+
+        # Generate unique IDs for each datapoint
+        ids = [str(uuid.uuid4()) for _ in range(len(texts))]
+
+        # Store documents in GCS via the vector store's document storage
+        # so they can be retrieved later by the searcher.
+        from langchain_core.documents import Document as LCDocument
+        documents = [
+            LCDocument(id=id_, page_content=text, metadata={**meta, "id": id_})
+            for id_, text, meta in zip(ids, texts, metadatas)
+        ]
+        self.db._document_storage.mset(list(zip(ids, documents)))
+
+        # Build batch records (without sparse_embedding field)
+        records = []
+        for id_, embedding, metadata in zip(ids, embeddings, metadatas):
+            record = {
+                "id": id_,
+                "embedding": embedding,
+            }
+            # Add string restricts only
+            restricts = [
+                {"namespace": k, "allow": [v]}
+                for k, v in metadata.items()
+                if isinstance(v, str)
+            ]
+            if restricts:
+                record["restricts"] = restricts
+            records.append(record)
+
+        # Write batch JSON to GCS
+        file_content = "\n".join(json.dumps(r) for r in records)
+        prefix = str(uuid.uuid4())
+
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(gcs_bucket)
+        blob = bucket.blob(f"{prefix}/documents.json")
+        blob.upload_from_string(file_content)
+
+        contents_delta_uri = f"gs://{gcs_bucket}/{prefix}"
+
+        # Trigger the batch index update
+        index = aiplatform.MatchingEngineIndex(index_id)
+        index.update_embeddings(
+            contents_delta_uri=contents_delta_uri,
+            is_complete_overwrite=True,
+        )
+
+        print(f"    Batch index update triggered with {len(records)} datapoint(s).")
+        return prefix
 
 
-    """
-    Retrieve relevant document chunks for the given query.
 
-    Returns (file_token_counts, context_string).
-
-    Context is built from the retrieved chunks directly (not full documents),
-    keeping token usage proportional to the number of relevant passages.
-    """
     def retrieve(self, query: str) -> tuple[list[dict], str]:
+        """
+        Retrieve relevant document chunks for the given query.
+
+        Returns (file_token_counts, context_string).
+
+        Context is built from the retrieved chunks directly (not full documents),
+        keeping token usage proportional to the number of relevant passages.
+        """
         docs = self.retriever.invoke(query)
 
         # Build context from retrieved chunks grouped by source file
