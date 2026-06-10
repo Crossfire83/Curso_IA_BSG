@@ -23,6 +23,7 @@ REGLAS:
    suficiente información para responder completamente la pregunta, indica lo que puedes
    responder y señala claramente lo que falta. Nunca inventes información.
 7. **Idioma.** Responde siempre en español.
+8. **Formato de salida.** Usa formato Markdown para una mejor legibilidad.
 
 EXTRACTOS DE DOCUMENTOS:
 {context}

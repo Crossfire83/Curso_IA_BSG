@@ -1,5 +1,84 @@
 # RAG BSG: Proyecto 1 - RAG Serverless Multinube
 
+## Diagrama de Arquitectura (L3)
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+    User([User])
+
+    subgraph CICD ["GitHub (CI/CD)"]
+        direction TB
+        Repo[Repositorio]
+        Actions[GitHub Actions]
+        GHCR[Registro de Contenedores]
+        Repo --> Actions
+        Actions --> GHCR
+    end
+
+    subgraph Azure ["Azure (Hosting)"]
+        direction TB
+        AppService["Azure App Service (Web App)"]
+    end
+
+    subgraph App ["Aplicación"]
+        direction TB
+        Flask[Flask + Gunicorn]
+        S3Collector[S3 File Collector]
+        Chunker[Chunker]
+        LLMClient[Cliente LLM]
+        PromptTemplate[Prompt Plantilla]
+        VectorStore[Cliente de Vector Store]
+    end
+
+    subgraph AWS ["AWS"]
+        direction TB
+        S3[Bucket de S3]
+        Bedrock[Amazon Bedrock]
+    end
+
+    subgraph GCP ["Google Cloud"]
+        direction TB
+        GCS[Cloud Storage]
+        VectorSearch[Vertex AI Vector Search]
+        SA[Cuenta de Servicio]
+    end
+
+    User --> AppService
+    GHCR --> AppService
+    AppService --> Flask
+
+    Flask --> S3Collector
+    Flask --> PromptTemplate
+    Flask --> VectorStore
+
+    S3Collector --> Chunker
+    S3Collector --> S3
+
+    PromptTemplate --> LLMClient
+    LLMClient --> Bedrock
+
+    VectorStore --> VectorSearch
+    VectorSearch --> GCS
+    VectorStore -. autenticación .-> SA
+
+    %% Styling
+    classDef azure fill:#0078d4,color:#fff,stroke:#005a9e
+    classDef aws fill:#ff9900,color:#fff,stroke:#cc7a00
+    classDef gcp fill:#4285f4,color:#fff,stroke:#2a56c6
+    classDef github fill:#24292e,color:#fff,stroke:#1b1f23
+    classDef app fill:#3c873a,color:#fff,stroke:#2d6b2a
+
+    class AppService azure
+    class S3,Bedrock aws
+    class GCS,VectorSearch,SA gcp
+    class Repo,GHCR,Actions github
+    class Flask,Chunker,VectorStore,LLMClient,PromptTemplate,S3Collector app
+```
+
 ## Primeros pasos
 
 - Verifica tu instalación de Python con `python3 --version` para Mac o, para Windows: `python --version`.
@@ -113,12 +192,7 @@ Luego instala las dependencias de Python con:
 
 ### Github & Github Actions
 
-1. Realiza un Fork de este Repositorio
-2. Una vez hecho el fork, haz clic en la pestaña Actions en la parte superior
-3. Busca la sección de Despliegue (Deployment), haz clic en "Ver todo" (View All)
-4. Busca "Deploy a container to an Azure Web App" y haz clic en Configurar (Configure)
-5. Confirma los cambios (Commit changes)
-6. Ve a la configuración de tu repositorio (Repository Settings)
+1. Ve a la configuración de tu repositorio (Repository Settings)
    1. Crea los Secretos necesarios
       1. Busca y haz clic en la opción "Variables y Secretos" (Secrets and Variables) a la izquierda.
       2. Haz clic en la subopción "Actions".

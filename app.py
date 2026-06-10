@@ -157,23 +157,7 @@ def s3_upload_files():
             else:
                 return jsonify({"error": f"S3 error: {error_code}. {message}"}), 500
 
-    # 5. All uploads succeeded — re-index the vector store from S3
-    with _cache_lock:
-        cache_key = f"s3://{bucket}?region={resolve_region('')}"
-        try:
-            config = S3SourceConfig(bucket=bucket, prefix="", region=resolve_region(""))
-            collector = S3FileCollector(config=config)
-            docs, _skipped, _total = collector.collect_with_stats()
-
-            if docs:
-                _rag_cache[cache_key] = DocumentRAG(
-                    documents=docs,
-                    region_name=resolve_region(""),
-                )
-        except Exception:
-            # If re-indexing fails, clear cache so next reload can retry
-            _rag_cache.pop(cache_key, None)
-
+    # 5. All uploads succeeded
     return jsonify({"uploaded": uploaded}), 200
 
 
@@ -258,26 +242,59 @@ def s3_delete_file(key: str):
             return jsonify({"error": f"Access denied to bucket '{bucket}'. Check IAM permissions."}), 403
         return jsonify({"error": f"S3 error: {error_code}. {message}"}), 500
 
-    # 5. Invalidate RAG cache and re-index for this bucket
-    with _cache_lock:
-        cache_key = f"s3://{bucket}?region={resolve_region('')}"
-        try:
-            config = S3SourceConfig(bucket=bucket, prefix="", region=resolve_region(""))
-            collector = S3FileCollector(config=config)
-            docs, _skipped, _total = collector.collect_with_stats()
-
-            if docs:
-                _rag_cache[cache_key] = DocumentRAG(
-                    documents=docs,
-                    region_name=resolve_region(""),
-                )
-            else:
-                _rag_cache.pop(cache_key, None)
-        except Exception:
-            _rag_cache.pop(cache_key, None)
-
-    # 6. Return success
+    # 5. Return success
     return jsonify({"deleted": key}), 200
+
+
+@app.get("/s3/files/<path:key>/download")
+def s3_download_file(key: str):
+    """Download a file from the configured S3 bucket."""
+    import io
+
+    # 1. Validate bucket configuration
+    bucket, err = _get_configured_bucket()
+    if err:
+        return jsonify({"error": err}), 500
+
+    # 2. Validate key
+    if not key or not key.strip():
+        return jsonify({"error": "Key must not be empty."}), 400
+
+    # 3. Build S3 client
+    try:
+        s3 = _make_s3_client()
+    except CredentialsError:
+        return jsonify({"error": "AWS credentials could not be resolved."}), 500
+
+    # 4. Get the object from S3
+    try:
+        response = s3.get_object(Bucket=bucket, Key=key)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        message = exc.response.get("Error", {}).get("Message", str(exc))
+        if error_code == "NoSuchKey":
+            return jsonify({"error": f"File '{key}' not found."}), 404
+        if error_code == "NoSuchBucket":
+            return jsonify({"error": f"Bucket '{bucket}' not found."}), 404
+        if error_code == "AccessDenied":
+            return jsonify({"error": f"Access denied to bucket '{bucket}'. Check IAM permissions."}), 403
+        return jsonify({"error": f"S3 error: {error_code}. {message}"}), 500
+
+    # 5. Stream the file content back to the client
+    body = response["Body"].read()
+    content_type = response.get("ContentType", "application/octet-stream")
+
+    # Extract just the filename from the key (in case it has path separators)
+    filename = key.rsplit("/", 1)[-1] if "/" in key else key
+
+    return Response(
+        body,
+        mimetype=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(body)),
+        },
+    )
 
 
 def _ask_generator_s3(query: str) -> Generator[str, None, None]:
@@ -372,7 +389,11 @@ def list_s3_files() -> tuple[Response, int]:
         keys: list[str] = []
         for page in pages:
             for obj in page.get("Contents", []):
-                keys.append(obj["Key"])
+                key = obj["Key"]
+                # Skip folder markers (keys ending with '/')
+                if key.endswith("/"):
+                    continue
+                keys.append(key)
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
         message = exc.response.get("Error", {}).get("Message", str(exc))

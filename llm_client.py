@@ -6,7 +6,7 @@ from botocore.config import Config
 class BedrockLLM:
     def __init__(
         self,
-        model: str = "anthropic.claude-sonnet-4-6",
+        model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
         region_name: str = "us-west-1",
         # this is the maximum number of output tokens allowed for the model.
         max_tokens: int = 65536,

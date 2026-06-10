@@ -476,6 +476,19 @@
         background: #fecaca;
       }
 
+      .s3-download-btn {
+        background: #dbeafe;
+        color: #1d4ed8;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.8rem;
+        border-radius: 4px;
+        flex-shrink: 0;
+      }
+
+      .s3-download-btn:hover:not(:disabled) {
+        background: #bfdbfe;
+      }
+
       .s3-toggle-btn {
         background: transparent;
         border: none;
@@ -555,7 +568,6 @@
 
     {% raw %}
     <script>
-      // ── PDF Upload Validation Constants & Function ────────────────────────────
       var ALLOWED_EXTENSION = ".pdf";
       var MAX_FILE_SIZE = 52428800; // 50 MB in bytes
 
@@ -577,9 +589,7 @@
         }
         return { valid: errors.length === 0, errors: errors };
       }
-      // ── End PDF Upload Validation ─────────────────────────────────────────────
 
-      // ── Collapsible file list toggle ──────────────────────────────────────────
       var _fileListCollapsed = true; // default: collapsed
 
       function toggleFileList() {
@@ -603,11 +613,9 @@
           btn.setAttribute('aria-label', 'Collapse file list');
         }
       }
-      // ── End collapsible file list toggle ──────────────────────────────────────
 
       document.getElementById('s3-toggle-btn').addEventListener('click', toggleFileList);
 
-      // ── S3 data loaders (stubs — implemented in tasks 9.2 & 9.3) ──────────
       function loadBucketInfo() {
         var el = document.getElementById('s3-bucket-info');
         fetch('/s3/config')
@@ -657,12 +665,23 @@
                 var li = document.createElement('li');
                 var span = document.createElement('span');
                 span.textContent = key;
-                var btn = document.createElement('button');
-                btn.className = 's3-delete-btn';
-                btn.setAttribute('data-key', key);
-                btn.textContent = 'Delete';
+                var btnGroup = document.createElement('span');
+                btnGroup.style.display = 'flex';
+                btnGroup.style.gap = '0.4rem';
+                var downloadBtn = document.createElement('button');
+                downloadBtn.type = 'button';
+                downloadBtn.className = 's3-download-btn';
+                downloadBtn.setAttribute('data-key', key);
+                downloadBtn.textContent = 'Descargar';
+                var deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 's3-delete-btn';
+                deleteBtn.setAttribute('data-key', key);
+                deleteBtn.textContent = 'Eliminar';
+                btnGroup.appendChild(downloadBtn);
+                btnGroup.appendChild(deleteBtn);
                 li.appendChild(span);
-                li.appendChild(btn);
+                li.appendChild(btnGroup);
                 fileList.appendChild(li);
               });
             }
@@ -674,9 +693,7 @@
             fileManager.appendChild(errEl);
           });
       }
-      // ── End S3 data loaders ─────────────────────────────────────────────────
 
-      // ── Task 9.5: Delete button handler (event-delegated on #s3-file-list) ──
       (function () {
         var fileList = document.getElementById('s3-file-list');
 
@@ -684,10 +701,13 @@
           var btn = event.target.closest('.s3-delete-btn');
           if (!btn) return;
 
+          event.preventDefault();
+          event.stopPropagation();
+
           var key = btn.dataset.key;
           if (!key) return;
 
-          if (!confirm('Delete ' + key + '?')) return;
+          if (!confirm('Borrar ' + key + '?')) return;
 
           fetch('/s3/files/' + key, { method: 'DELETE' })
             .then(function (response) {
@@ -729,18 +749,39 @@
             });
         });
       })();
-      // ── End Task 9.5 ────────────────────────────────────────────────────────
+
+      (function () {
+        var fileList = document.getElementById('s3-file-list');
+
+        fileList.addEventListener('click', function (event) {
+          var btn = event.target.closest('.s3-download-btn');
+          if (!btn) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          var key = btn.dataset.key;
+          if (!key) return;
+
+          // Trigger download via a temporary hidden link
+          var a = document.createElement('a');
+          a.href = '/s3/files/' + encodeURIComponent(key) + '/download';
+          a.download = key;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        });
+      })();
 
 
 
-      // ── DOMContentLoaded: load S3 data unconditionally ─────────────────────
       document.addEventListener('DOMContentLoaded', function () {
         loadBucketInfo();
         loadFileList();
       });
-      // ── End DOMContentLoaded ────────────────────────────────────────────────
 
-      // ── Task 9.4: Upload button handler ─────────────────────────────────
+
+
       (function () {
         var uploadBtn = document.getElementById('s3-upload-btn');
         var uploadInput = document.getElementById('s3-upload-input');
@@ -815,9 +856,9 @@
             });
         });
       })();
-      // ── End Task 9.4 ────────────────────────────────────────────────────────
 
-      // ── Task 4.2: SSE streaming submit ─────────────────────────────────────
+
+
       (function () {
         const form = document.getElementById('query-form');
         const submitBtn = document.getElementById('submit-btn');
@@ -1118,9 +1159,9 @@
           }
         });
       })();
-      // ── End Task 4.2 ────────────────────────────────────────────────────────
 
-      // ── Reload overlay helpers ──────────────────────────────────────────────
+
+
       (function () {
         /**
          * Show a spinner inside a button, replacing its text.
@@ -1176,9 +1217,9 @@
           if (queryField) queryField.disabled = disabled;
         };
       })();
-      // ── End Reload overlay helpers ────────────────────────────────────────────
 
-      // ── Task 4.3: Reload / Clear cache button ──────────────────────────────
+
+
       (function () {
         const reloadBtn = document.getElementById('reload-btn');
 
@@ -1214,7 +1255,6 @@
             });
         });
       })();
-      // ── End Task 4.3 ────────────────────────────────────────────────────────
     </script>
     {% endraw %}
   </body>

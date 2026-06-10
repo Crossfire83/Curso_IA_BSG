@@ -6,12 +6,6 @@ from dotenv import load_dotenv
 from langchain_core.documents import Document
 import time
 
-# ── Configuration ──────────────────────────────────────────────
-LLM_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-"""
-other models available:
-- us.anthropic.claude-sonnet-4-20250514-v1:0
-"""
 
 
 class DocumentRAG:
@@ -24,12 +18,11 @@ class DocumentRAG:
 
     def __init__(
         self,
-        model: str = LLM_MODEL,
         region_name: str = "us-west-1",
         documents: list[Document] | None = None,
     ):
         # LLM is always needed
-        self.llm = BedrockLLM(model=model, region_name=region_name)
+        self.llm = BedrockLLM(region_name=region_name)
 
         if documents is not None and len(documents) > 0:
             self._index_documents(documents)

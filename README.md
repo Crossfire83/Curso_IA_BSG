@@ -2,6 +2,85 @@
 
 Para la version en español, click [aqui](/README_ES.md)
 
+## Architecture Diagram (L3)
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+    User([User])
+
+    subgraph CICD ["GitHub (CI/CD)"]
+        direction TB
+        Repo[GitHub Repo]
+        Actions[GitHub Actions]
+        GHCR[Container Registry]
+        Repo --> Actions
+        Actions --> GHCR
+    end
+
+    subgraph Azure ["Azure (Hosting)"]
+        direction TB
+        AppService[App Service]
+    end
+
+    subgraph App ["Application"]
+        direction TB
+        Flask[Flask + Gunicorn]
+        S3Collector[S3 File Collector]
+        Chunker[Chunker]
+        LLMClient[LLM Client]
+        PromptTemplate[Prompt Template]
+        VectorStore[Vector Store Client]
+    end
+
+    subgraph AWS ["AWS"]
+        direction TB
+        S3[S3 Bucket]
+        Bedrock[Amazon Bedrock]
+    end
+
+    subgraph GCP ["Google Cloud"]
+        direction TB
+        GCS[Cloud Storage]
+        VectorSearch[Vertex AI Vector Search]
+        SA[Service Account]
+    end
+
+    User --> AppService
+    GHCR --> AppService
+    AppService --> Flask
+
+    Flask --> S3Collector
+    Flask --> PromptTemplate
+    Flask --> VectorStore
+
+    S3Collector --> Chunker
+    S3Collector --> S3
+
+    PromptTemplate --> LLMClient
+    LLMClient --> Bedrock
+
+    VectorStore --> VectorSearch
+    VectorSearch --> GCS
+    VectorStore -. auth .-> SA
+
+    %% Styling
+    classDef azure fill:#0078d4,color:#fff,stroke:#005a9e
+    classDef aws fill:#ff9900,color:#fff,stroke:#cc7a00
+    classDef gcp fill:#4285f4,color:#fff,stroke:#2a56c6
+    classDef github fill:#24292e,color:#fff,stroke:#1b1f23
+    classDef app fill:#3c873a,color:#fff,stroke:#2d6b2a
+
+    class AppService azure
+    class S3,Bedrock aws
+    class GCS,VectorSearch,SA gcp
+    class Repo,GHCR,Actions github
+    class Flask,Chunker,VectorStore,LLMClient,PromptTemplate,S3Collector app
+```
+
 ## Getting started
 
 - Verify your python installation with `python3 --version` for mac or for windows: `python --version`
@@ -115,12 +194,7 @@ Then install the python dependencies with:
 
 ### Github & Github Actions
 
-1. Fork this Repository.
-2. Once forked, click on the Actions tab at the top.
-3. Look for the Deployment Section, click on "View All".
-4. Look for the "Deploy a container to an Azure Web App" and click on Configure.
-5. Commit changes.
-6. Go to you repository Settings.
+1. Go to you repository Settings.
    1. Create necessary Secrets
       1. Look and click for the "Secrets and Variables" option at the left.
       2. Click on the "Actions" suboption.
