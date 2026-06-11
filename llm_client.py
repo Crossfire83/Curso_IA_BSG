@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class BedrockLLM:
     def __init__(
         self,
-        model: str = "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0",
         region_name: str = "us-west-1",
         # Cap output tokens to something reasonable for a support answer
         max_tokens: int = 4096,
