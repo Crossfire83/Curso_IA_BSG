@@ -32,7 +32,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copiar archivo de requerimientos del proyecto
 COPY requirements.txt ${APP_HOME}
 
-#Instalar librerias adicionales necesitadas por el proyecto
+# Instalar PyTorch CPU-only (evita descargar ~5GB de librerias NVIDIA CUDA)
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Instalar librerias adicionales necesitadas por el proyecto
 RUN pip install --no-cache-dir -r requirements.txt
 
 # --- Stage 2: Imagen minima final de runtime ---
