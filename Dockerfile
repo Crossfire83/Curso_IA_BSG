@@ -65,4 +65,4 @@ USER appuser
 EXPOSE 8000
 
 # Comando de ejecución
-CMD ["gunicorn", "--preload", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "300", "--graceful-timeout", "120", "--worker-class", "gthread", "app:app"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "--preload", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "300", "--graceful-timeout", "120", "--worker-class", "gthread", "app:app"]

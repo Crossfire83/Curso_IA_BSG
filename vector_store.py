@@ -1,11 +1,15 @@
 import os
 import base64
 import json
+import logging
 import shutil
+import time
 import uuid
 from pathlib import Path
 
 from langchain_core.documents import Document
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_google_credentials() -> None:
@@ -40,7 +44,8 @@ def ensure_google_credentials() -> None:
     with open(creds_path, "w", encoding="utf-8") as f:
         json.dump(credentials_dict, f)
 
-    print(f"Google credentials file written to {creds_path}")
+    logger.info("Google credentials file written to %s", creds_path)
+
 
 class VectorStore:
     """Manages the vector DB and retrieval for PDF documents.
@@ -49,22 +54,22 @@ class VectorStore:
     - "chroma" (default): local Chroma DB
     - "google": Google Vertex AI Vector Search
 
-    Supports two modes:
-    - index: upserts chunks into the vector store (used on upload/reload)
-    - query-only: connects to the existing store without re-indexing (used on ask)
+    The constructor only establishes the connection. Use `index()` to upsert
+    documents and `retrieve()` to query. A single instance supports both
+    operations without needing to be recreated.
     """
 
     def __init__(
         self,
-        chunks: list[Document] | None = None,
         persist_directory: str = "./chroma_db",
         embedding_model: str = "nomic-embed-text",
-        retriever_k: int = 50,
+        retriever_k: int = 10,
     ):
-        """Initialize the vector store.
+        """Connect to the vector store backend.
 
-        If `chunks` is provided, upserts them into the store (index mode).
-        If `chunks` is None, connects to the existing store for retrieval only (query mode).
+        This only sets up the connection — no indexing happens here.
+        Call `index(chunks)` to upsert documents.
+        Call `retrieve(query)` to search.
         """
         self._retriever_k = retriever_k
         self._persist_directory = persist_directory
@@ -73,68 +78,34 @@ class VectorStore:
         backend = os.environ.get("VECTOR_STORE_BACKEND", "chroma").lower()
         self._backend = backend
 
-        index_mode = chunks is not None
-
+        t0 = time.time()
         if backend == "google":
-            self._init_google(chunks, retriever_k)
+            self._connect_google()
         else:
-            self._init_chroma(chunks, persist_directory, embedding_model, retriever_k)
+            self._connect_chroma(persist_directory, embedding_model)
 
-        if index_mode and chunks:
-            print(
-                f"  Vector store ({backend}): indexed "
-                f"{len(chunks)} chunk(s)"
-            )
-        else:
-            print(f"  Vector store ({backend}): connected in query-only mode")
+        self.retriever = self.db.as_retriever(search_kwargs={"k": retriever_k})
+        elapsed = time.time() - t0
+        logger.info("[VectorStore] Connected to '%s' backend in %.2fs", backend, elapsed)
 
-    def _init_chroma(
-        self,
-        chunks: list[Document] | None,
-        persist_directory: str,
-        embedding_model: str,
-        retriever_k: int,
-    ) -> None:
-        """Initialize local Chroma vector store.
+    # ------------------------------------------------------------------
+    # Connection (called once at construction)
+    # ------------------------------------------------------------------
 
-        If chunks is provided: wipes existing DB and indexes fresh.
-        If chunks is None: connects to the existing persisted DB.
-        """
+    def _connect_chroma(self, persist_directory: str, embedding_model: str) -> None:
+        """Connect to the local Chroma vector store."""
         from langchain_community.vectorstores import Chroma
         from langchain_huggingface import HuggingFaceEmbeddings
 
-        embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
-        persist_path = Path(persist_directory)
+        self._embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
 
-        if chunks is not None:
-            # Index mode: wipe and rebuild
-            if persist_path.exists():
-                shutil.rmtree(persist_path)
+        self.db = Chroma(
+            persist_directory=persist_directory,
+            embedding_function=self._embeddings,
+        )
 
-            self.db = Chroma.from_texts(
-                texts=[doc.page_content for doc in chunks],
-                metadatas=[doc.metadata for doc in chunks],
-                embedding=embeddings,
-                persist_directory=persist_directory,
-            )
-        else:
-            # Query-only mode: connect to existing persisted DB
-            self.db = Chroma(
-                persist_directory=persist_directory,
-                embedding_function=embeddings,
-            )
-
-        self.retriever = self.db.as_retriever(search_kwargs={"k": retriever_k})
-
-    def _init_google(
-        self,
-        chunks: list[Document] | None,
-        retriever_k: int,
-    ) -> None:
-        """Initialize Google Vertex AI Vector Search backend.
-
-        If chunks is provided: upserts them into the index.
-        If chunks is None: connects for retrieval only.
+    def _connect_google(self) -> None:
+        """Connect to Google Vertex AI Vector Search.
 
         Required env vars:
           - GCP_PROJECT_ID: Google Cloud project ID
@@ -149,7 +120,6 @@ class VectorStore:
         from langchain_google_vertexai import VectorSearchVectorStore
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-        # Ensure credentials file exists on disk before any GCP calls
         ensure_google_credentials()
 
         project_id = os.environ["GCP_PROJECT_ID"]
@@ -158,15 +128,18 @@ class VectorStore:
         index_id = os.environ["GCP_VS_INDEX_ID"]
         endpoint_id = os.environ["GCP_VS_ENDPOINT_ID"]
 
+        self._gcp_project_id = project_id
+        self._gcp_region = region
+        self._gcs_bucket = gcs_bucket
+        self._index_id = index_id
+
         aiplatform.init(project=project_id, location=region)
 
-        embedding_model = GoogleGenerativeAIEmbeddings(
-            # to be retired on April 1, 2027,
-            # see https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions#embeddings-models
+        self._google_embedding_model = GoogleGenerativeAIEmbeddings(
             model="text-multilingual-embedding-002",
             project=project_id,
             vertexai=True,
-            output_dimensionality=128
+            output_dimensionality=128,
         )
 
         self.db = VectorSearchVectorStore.from_components(
@@ -175,47 +148,114 @@ class VectorStore:
             gcs_bucket_name=gcs_bucket,
             index_id=index_id,
             endpoint_id=endpoint_id,
-            embedding=embedding_model,
+            embedding=self._google_embedding_model,
             stream_update=False,
         )
 
-        # Only upsert when in index mode
-        if chunks is not None:
-            # Bypass langchain's add_texts to avoid the INVALID_SPARSE_EMBEDDING
-            # bug (it serializes empty sparse embeddings in batch mode).
-            # Instead, we embed texts, build the batch JSON ourselves, upload to
-            # GCS, and call update_embeddings directly.
-            texts = [doc.page_content for doc in chunks]
-            # Keep only string metadata to avoid MULTIPLE_VALUES errors
-            # from numeric fields being sent as conflicting restricts.
-            metadatas = [
-                {k: v for k, v in doc.metadata.items() if isinstance(v, str)}
-                for doc in chunks
-            ]
+    # ------------------------------------------------------------------
+    # Index (call explicitly when you have documents to upsert)
+    # ------------------------------------------------------------------
 
-            # Clean old staged files BEFORE generating new embeddings
-            self._clear_gcs_staging(gcs_bucket)
+    def index(self, chunks: list[Document]) -> None:
+        """Upsert document chunks into the vector store.
 
-            # Now index the new batch
-            self._batch_index(
-                texts=texts,
-                metadatas=metadatas,
-                embedding_model=embedding_model,
-                gcs_bucket=gcs_bucket,
-                index_id=index_id,
-            )
+        For Chroma: wipes existing DB and rebuilds from scratch.
+        For Google: batch-indexes via GCS upload + update_embeddings.
+        """
+        if not chunks:
+            logger.warning("[VectorStore] index() called with empty chunks list — skipping.")
+            return
 
+        t0 = time.time()
+        logger.info("[VectorStore] Indexing %d chunk(s) into '%s' backend...", len(chunks), self._backend)
 
-        self.retriever = self.db.as_retriever(search_kwargs={"k": retriever_k})
+        if self._backend == "google":
+            self._index_google(chunks)
+        else:
+            self._index_chroma(chunks)
+
+        # Refresh the retriever after indexing
+        self.retriever = self.db.as_retriever(search_kwargs={"k": self._retriever_k})
+
+        elapsed = time.time() - t0
+        logger.info("[VectorStore] Indexing complete in %.2fs — %d chunk(s)", elapsed, len(chunks))
+
+    def _index_chroma(self, chunks: list[Document]) -> None:
+        """Wipe and rebuild the local Chroma DB."""
+        from langchain_community.vectorstores import Chroma
+
+        persist_path = Path(self._persist_directory)
+        if persist_path.exists():
+            shutil.rmtree(persist_path)
+
+        self.db = Chroma.from_texts(
+            texts=[doc.page_content for doc in chunks],
+            metadatas=[doc.metadata for doc in chunks],
+            embedding=self._embeddings,
+            persist_directory=self._persist_directory,
+        )
+
+    def _index_google(self, chunks: list[Document]) -> None:
+        """Batch-index chunks into Google Vertex AI Vector Search."""
+        texts = [doc.page_content for doc in chunks]
+        metadatas = [
+            {k: v for k, v in doc.metadata.items() if isinstance(v, str)}
+            for doc in chunks
+        ]
+
+        # Clean old staged files before generating new embeddings
+        self._clear_gcs_staging(self._gcs_bucket)
+
+        # Batch index
+        self._batch_index(
+            texts=texts,
+            metadatas=metadatas,
+            embedding_model=self._google_embedding_model,
+            gcs_bucket=self._gcs_bucket,
+            index_id=self._index_id,
+        )
+
+    # ------------------------------------------------------------------
+    # Retrieve (call on each query)
+    # ------------------------------------------------------------------
+
+    def retrieve(self, query: str) -> tuple[list[dict], str]:
+        """Retrieve relevant document chunks for the given query.
+
+        Returns (file_token_counts, context_string).
+        """
+        t0 = time.time()
+        docs = self.retriever.invoke(query)
+        t1 = time.time()
+        logger.info(
+            "[VectorStore] retriever.invoke() took %.2fs — returned %d doc(s)",
+            t1 - t0, len(docs),
+        )
+
+        # Build context from retrieved chunks grouped by source file
+        context = self._build_context_from_chunks(docs)
+
+        # Calculate per-file token counts based on included chunks
+        file_token_counts = self._calculate_chunk_token_counts(docs)
+
+        total_chars = len(context)
+        approx_tokens = total_chars // 4
+        logger.info(
+            "[VectorStore] Retrieved context: %d chunk(s) from %d file(s), ~%d tokens (%d chars)",
+            len(docs), len(file_token_counts), approx_tokens, total_chars,
+        )
+
+        return file_token_counts, context
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     def _clear_gcs_staging(self, bucket_name: str) -> None:
-        """Delete old staged embedding files from the GCS bucket sequentially.
-
-        Runs before new indexing to ensure a clean slate.
-        """
+        """Delete old staged embedding files from the GCS bucket."""
         from google.cloud import storage
 
-        print(f"  Clearing old files from gs://{bucket_name}/ ...")
+        logger.info("[VectorStore] Clearing old files from gs://%s/ ...", bucket_name)
 
         try:
             client = storage.Client()
@@ -223,18 +263,17 @@ class VectorStore:
             blobs = list(bucket.list_blobs())
 
             if not blobs:
-                print("    No old files to clean.")
+                logger.info("[VectorStore] No old files to clean.")
                 return
 
-            # Sequential batch deletion (batches of 1000)
             batch_size = 1000
             for i in range(0, len(blobs), batch_size):
                 batch = blobs[i:i + batch_size]
                 bucket.delete_blobs(batch)
 
-            print(f"    Deleted {len(blobs)} old file(s) from GCS bucket.")
+            logger.info("[VectorStore] Deleted %d old file(s) from GCS bucket.", len(blobs))
         except Exception as exc:
-            print(f"    GCS cleanup error: {exc}")
+            logger.error("[VectorStore] GCS cleanup error: %s", exc)
 
     def _batch_index(
         self,
@@ -244,26 +283,17 @@ class VectorStore:
         gcs_bucket: str,
         index_id: str,
     ) -> None:
-        """Index chunks via batch update, writing clean JSON to GCS.
-
-        This bypasses langchain's add_texts to avoid the
-        INVALID_SPARSE_EMBEDDING bug where empty sparse embedding objects
-        get serialized into the batch JSON and rejected by the index.
-
-        We also store documents in GCS (for retrieval) via the vector store's
-        internal document storage, matching what add_texts would do.
-        """
+        """Index chunks via batch update, writing clean JSON to GCS."""
         from google.cloud import aiplatform, storage
+        from langchain_core.documents import Document as LCDocument
 
-        print(f"    Embedding {len(texts)} chunk(s)...")
+        logger.info("[VectorStore] Embedding %d chunk(s)...", len(texts))
         embeddings = embedding_model.embed_documents(texts)
 
         # Generate unique IDs for each datapoint
         ids = [str(uuid.uuid4()) for _ in range(len(texts))]
 
         # Store documents in GCS via the vector store's document storage
-        # so they can be retrieved later by the searcher.
-        from langchain_core.documents import Document as LCDocument
         documents = [
             LCDocument(id=id_, page_content=text, metadata={**meta, "id": id_})
             for id_, text, meta in zip(ids, texts, metadatas)
@@ -277,7 +307,6 @@ class VectorStore:
                 "id": id_,
                 "embedding": embedding,
             }
-            # Add string restricts only
             restricts = [
                 {"namespace": k, "allow": [v]}
                 for k, v in metadata.items()
@@ -305,51 +334,12 @@ class VectorStore:
             is_complete_overwrite=True,
         )
 
-        print(f"    Batch index update triggered with {len(records)} datapoint(s).")
-
-
-
-    def retrieve(self, query: str) -> tuple[list[dict], str]:
-        """
-        Retrieve relevant document chunks for the given query.
-
-        Returns (file_token_counts, context_string).
-
-        Context is built from the retrieved chunks directly (not full documents),
-        keeping token usage proportional to the number of relevant passages.
-        """
-        import logging
-        import time
-        logger = logging.getLogger(__name__)
-
-        t0 = time.time()
-        docs = self.retriever.invoke(query)
-        t1 = time.time()
-        logger.info(
-            "[VectorStore] retriever.invoke() took %.2fs — returned %d doc(s)",
-            t1 - t0, len(docs),
-        )
-
-        # Build context from retrieved chunks grouped by source file
-        context = self._build_context_from_chunks(docs)
-
-        # Calculate per-file token counts based on included chunks
-        file_token_counts = self._calculate_chunk_token_counts(docs)
-
-        total_chars = len(context)
-        approx_tokens = total_chars // 4
-        print(
-            f"  Retrieved context: {len(docs)} chunk(s) from "
-            f"{len(file_token_counts)} file(s), ~{approx_tokens:,} tokens ({total_chars:,} chars)"
-        )
-
-        return file_token_counts, context
+        logger.info("[VectorStore] Batch index update triggered with %d datapoint(s).", len(records))
 
     def _build_context_from_chunks(self, docs: list) -> str:
         """Build context string directly from retrieved chunks, grouped by source file."""
         from collections import OrderedDict
 
-        # Group chunks by file, preserving retrieval order
         file_chunks: OrderedDict[str, list[str]] = OrderedDict()
         for doc in docs:
             fp = doc.metadata.get("file", "unknown")
@@ -357,7 +347,6 @@ class VectorStore:
                 file_chunks[fp] = []
             file_chunks[fp].append(doc.page_content)
 
-        # Format sections per file
         sections = []
         for fp, chunks in file_chunks.items():
             chunk_text = "\n---\n".join(chunks)

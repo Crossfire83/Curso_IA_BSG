@@ -27,33 +27,23 @@ class DocumentRAG:
         # LLM is always needed
         self.llm = BedrockLLM(region_name=region_name)
 
+        # Single vector store instance — connect once, use for both index and query
+        self.store = VectorStore()
+
+        # If documents provided, index them now
         if documents is not None and len(documents) > 0:
             self._index_documents(documents)
-        else:
-            self._connect_query_only()
 
     def _index_documents(self, documents: list[Document]) -> None:
-        """Index documents into the vector store (called on upload/reload)."""
-        print(f"Indexing {len(documents)} document(s)...")
+        """Chunk and index documents into the vector store."""
+        logger.info("[RAG] Indexing %d document(s)...", len(documents))
 
-        # Chunk
         chunker = DocumentChunker()
         chunks = chunker.chunk(documents)
-        print(f"  Chunks created: {len(chunks)}")
+        logger.info("[RAG] Chunks created: %d", len(chunks))
 
-        # Vector store — index mode
-        self.store = VectorStore(chunks=chunks)
-        print("  Vector DB indexed successfully.")
-
-    def _connect_query_only(self) -> None:
-        """Connect to the existing vector store without re-indexing (called on ask)."""
-        start = time.time()
-        logger.info("[RAG] Connecting to vector store (query-only mode)...")
-
-        # Vector store — query-only mode (no chunks passed)
-        self.store = VectorStore()
-        elapsed = time.time() - start
-        logger.info("[RAG] Vector store connected in %.2fs", elapsed)
+        self.store.index(chunks)
+        logger.info("[RAG] Vector DB indexed successfully.")
 
     def ask(self, query: str) -> dict:
         retrieval_start = time.time()
