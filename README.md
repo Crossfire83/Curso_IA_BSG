@@ -1,6 +1,8 @@
 # RAG BSG: Proyecto 1 - RAG Serverless Multinube
 
-Para la version en español, click [aqui](/README_ES.md)
+- Para la version en español, click [aqui](/README_ES.md)
+- [PDF File](/Proyecto 1 - Plataforma RAG Serverless Multinube.pdf)
+- [Explanation Video]()
 
 ## Architecture Diagram (L3)
 

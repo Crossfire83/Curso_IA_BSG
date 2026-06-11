@@ -357,10 +357,16 @@ class S3FileCollector:
                 # Extract text from PDF using pypdf
                 reader = PdfReader(io.BytesIO(pdf_bytes))
                 pages_text = []
-                for page in reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        pages_text.append(text)
+                for page_num, page in enumerate(reader.pages, start=1):
+                    try:
+                        text = page.extract_text()
+                        if text:
+                            pages_text.append(text)
+                    except Exception as page_exc:
+                        logging.warning(
+                            "Skipping page %d of S3 object %r: %s",
+                            page_num, full_key, page_exc,
+                        )
 
                 content = "\n\n".join(pages_text)
 
@@ -384,5 +390,14 @@ class S3FileCollector:
             except Exception as exc:
                 logging.warning("Skipping S3 object %r: %s", full_key, exc)
                 skipped += 1
+            except BaseException as exc:
+                # Catches SystemExit raised by gunicorn worker abort (timeout).
+                # Log the failure and re-raise to let gunicorn handle shutdown
+                # gracefully rather than crashing with an unhandled traceback.
+                logging.error(
+                    "Worker abort while processing S3 object %r: %s",
+                    full_key, exc,
+                )
+                raise
 
         return docs, skipped, total

@@ -62,4 +62,4 @@ USER appuser
 EXPOSE 8000
 
 # Comando de ejecución
-CMD ["gunicorn", "--preload", "app:app"]
+CMD ["gunicorn", "--preload", "--timeout", "3600", "app:app"]
