@@ -79,6 +79,36 @@ class DocumentRAG:
 
         return response
 
+    def ask_stream(self, query: str):
+        """Streaming version of ask. Yields (event_type, data) tuples.
+
+        Event types:
+          - "token": a text chunk from the LLM
+          - "done": final metadata dict (citations, tokens, timing)
+        """
+        retrieval_start = time.time()
+        citations, context = self.store.retrieve(query)
+        retrieval_elapsed = time.time() - retrieval_start
+
+        prompt = SYSTEM_PROMPT.format(context=context, query=query)
+
+        llm_start = time.time()
+        for chunk in self.llm.invoke_stream(prompt):
+            yield ("token", chunk)
+        llm_elapsed = time.time() - llm_start
+
+        total_elapsed = retrieval_elapsed + llm_elapsed
+        usage = self.llm.last_usage
+
+        yield ("done", {
+            "docs": citations,
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+            "elapsed_seconds": round(total_elapsed, 2),
+            "retrieval_seconds": round(retrieval_elapsed, 2),
+            "llm_seconds": round(llm_elapsed, 2),
+        })
+
     @staticmethod
     def _format_citations(docs: list[dict]) -> str:
         refs = []

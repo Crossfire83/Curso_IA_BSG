@@ -320,24 +320,21 @@ def _ask_generator_s3(query: str) -> Generator[str, None, None]:
 
         rag = _rag_cache[cache_key]
 
-        # 4. Run the query
-        result = rag.ask(query=query)
-
-        # 5. Yield token event
-        answer_text = result.get("answer_final") or result.get("answer_raw") or ""
-        yield f"data: {json.dumps({'token': answer_text})}\n\n"
-
-        # 6. Yield done event
-        meta = {
-            "done": True,
-            "docs": result.get("docs"),
-            "input_tokens": result.get("input_tokens"),
-            "output_tokens": result.get("output_tokens"),
-            "elapsed_seconds": result.get("elapsed_seconds"),
-            "retrieval_seconds": result.get("retrieval_seconds"),
-            "llm_seconds": result.get("llm_seconds"),
-        }
-        yield f"event: done\ndata: {json.dumps(meta)}\n\n"
+        # 4. Stream the query response token by token
+        for event_type, data in rag.ask_stream(query=query):
+            if event_type == "token":
+                yield f"data: {json.dumps({'token': data})}\n\n"
+            elif event_type == "done":
+                meta = {
+                    "done": True,
+                    "docs": data.get("docs"),
+                    "input_tokens": data.get("input_tokens"),
+                    "output_tokens": data.get("output_tokens"),
+                    "elapsed_seconds": data.get("elapsed_seconds"),
+                    "retrieval_seconds": data.get("retrieval_seconds"),
+                    "llm_seconds": data.get("llm_seconds"),
+                }
+                yield f"event: done\ndata: {json.dumps(meta)}\n\n"
 
     except CredentialsError as exc:
         yield _sse_error(f"AWS credentials error: {exc}")
