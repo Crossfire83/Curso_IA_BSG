@@ -23,7 +23,8 @@ from pypdf import PdfReader
 
 DEFAULT_REGION = "us-west-1"
 S3_TIMEOUT_SECONDS = 30
-PAGE_EXTRACT_TIMEOUT_SECONDS = 30  # Max time per page for text extraction
+PAGE_EXTRACT_TIMEOUT_SECONDS = 30   # Max time per page for text extraction
+PDF_EXTRACT_TIMEOUT_SECONDS = 300   # Max total time per PDF file
 
 # AWS bucket names: 3–63 chars, lowercase letters, digits, and hyphens,
 # no leading or trailing hyphen.
@@ -171,35 +172,116 @@ def resolve_region(config_region: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Safe PDF extraction (per-page timeout)
+# Safe PDF extraction (subprocess-isolated, per-page results)
 # ---------------------------------------------------------------------------
 
-def _extract_page_text_with_timeout(page, timeout: int = PAGE_EXTRACT_TIMEOUT_SECONDS) -> str | None:
-    """Extract text from a single PDF page with a timeout.
+def _extract_all_pages_worker(pdf_bytes: bytes, page_timeout: int) -> list[tuple[int, str, int]]:
+    """Worker function for subprocess: opens PDF and extracts text per page.
 
-    Uses a daemon thread so that if extract_text() hangs, we don't block
-    the main thread forever. Returns None on timeout or error.
+    Returns a list of (page_number, text, total_pages) tuples for pages that succeeded.
+    Runs in a child process so gunicorn's signal handler cannot interfere.
     """
     import threading
+    import traceback
 
-    result: list[str | None] = [None]
+    # Configure logging in the child process
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] [pdf-worker] %(message)s",
+    )
 
-    def _worker():
-        try:
-            result[0] = page.extract_text()
-        except Exception:
-            result[0] = None
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    total_pages = len(reader.pages)
+    results: list[tuple[int, str, int]] = []
 
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
-    t.join(timeout=timeout)
+    logging.info("PDF opened successfully: %d pages", total_pages)
 
-    if t.is_alive():
-        # Thread is stuck — we can't kill it, but since it's a daemon thread
-        # it won't prevent process exit. We just abandon it and move on.
-        return None
+    for page_num, page in enumerate(reader.pages, start=1):
+        # Per-page timeout via thread
+        text_holder: list[str | None] = [None]
+        error_holder: list[str | None] = [None]
 
-    return result[0]
+        def _worker(p=page, holder=text_holder, err_holder=error_holder):
+            try:
+                holder[0] = p.extract_text()
+            except Exception:
+                holder[0] = None
+                err_holder[0] = traceback.format_exc()
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        t.join(timeout=page_timeout)
+
+        if t.is_alive():
+            logging.warning(
+                "Page %d/%d: extraction timed out after %ds",
+                page_num, total_pages, page_timeout,
+            )
+            continue
+
+        if error_holder[0]:
+            logging.warning(
+                "Page %d/%d: extraction failed:\n%s",
+                page_num, total_pages, error_holder[0],
+            )
+            continue
+
+        text = text_holder[0]
+        if text and text.strip():
+            results.append((page_num, text, total_pages))
+
+    logging.info(
+        "Extraction complete: %d/%d pages yielded text", len(results), total_pages,
+    )
+    return results
+
+
+def extract_pdf_pages_safe(
+    pdf_bytes: bytes,
+    full_key: str = "<unknown>",
+    timeout: int = PDF_EXTRACT_TIMEOUT_SECONDS,
+    page_timeout: int = PAGE_EXTRACT_TIMEOUT_SECONDS,
+) -> tuple[list[tuple[int, str, int]], str | None]:
+    """Extract text from all PDF pages in a subprocess with a total timeout.
+
+    Returns (pages_data, error_message).
+    On success: ([(page_num, text, total_pages), ...], None)
+    On failure/timeout: ([], error_description)
+    """
+    from concurrent.futures import ProcessPoolExecutor, TimeoutError as FuturesTimeout
+    import multiprocessing
+    import traceback
+
+    pdf_size_mb = len(pdf_bytes) / (1024 * 1024)
+    logging.info(
+        "Starting PDF extraction for %r (%.2f MB, timeout=%ds, page_timeout=%ds)",
+        full_key, pdf_size_mb, timeout, page_timeout,
+    )
+
+    try:
+        # Use 'spawn' to avoid issues with gunicorn's forked workers
+        ctx = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=1, mp_context=ctx) as executor:
+            future = executor.submit(_extract_all_pages_worker, pdf_bytes, page_timeout)
+            page_results = future.result(timeout=timeout)
+
+        logging.info(
+            "PDF extraction succeeded for %r: %d page(s) extracted",
+            full_key, len(page_results),
+        )
+        return page_results, None
+
+    except FuturesTimeout:
+        err_msg = (
+            f"PDF extraction timed out after {timeout}s "
+            f"(file size: {pdf_size_mb:.2f} MB)"
+        )
+        logging.error("TIMEOUT for %r: %s", full_key, err_msg)
+        return [], err_msg
+    except Exception as exc:
+        err_msg = f"{type(exc).__name__}: {exc}"
+        logging.exception("FAILED extraction for %r: %s", full_key, err_msg)
+        return [], err_msg
 
 
 # ---------------------------------------------------------------------------
@@ -379,47 +461,73 @@ class S3FileCollector:
         docs: list[Document] = []
 
         # --- Download phase --------------------------------------------------
-        for full_key, rel_key in surviving:
+        logging.info(
+            "Starting download phase: %d file(s) to process from %s",
+            total, self.config.canonical_uri(),
+        )
+        for idx, (full_key, rel_key) in enumerate(surviving, start=1):
             try:
+                logging.info(
+                    "Processing file %d/%d: %r", idx, total, full_key,
+                )
                 response = self.s3_client.get_object(
                     Bucket=self.config.bucket,
                     Key=full_key,
                 )
                 pdf_bytes = response["Body"].read()
+                logging.info(
+                    "Downloaded %r: %.2f MB",
+                    full_key, len(pdf_bytes) / (1024 * 1024),
+                )
 
-                # Extract text page-by-page with a per-page timeout
-                reader = PdfReader(io.BytesIO(pdf_bytes))
-                file_has_content = False
-                for page_num, page in enumerate(reader.pages, start=1):
-                    text = _extract_page_text_with_timeout(page)
-                    if text and text.strip():
-                        docs.append(Document(
-                            page_content=text,
-                            metadata={
-                                "file": rel_key,
-                                "page": page_num,
-                                "total_pages": len(reader.pages),
-                            },
-                        ))
-                        file_has_content = True
-                    else:
-                        logging.warning(
-                            "Skipping page %d of S3 object %r (timeout or empty)",
-                            page_num, full_key,
-                        )
+                # Extract text in a subprocess (protects gunicorn worker)
+                pages_data, extract_err = extract_pdf_pages_safe(
+                    pdf_bytes, full_key=full_key,
+                )
 
-                if not file_has_content:
+                if extract_err:
+                    logging.error(
+                        "Skipping S3 object %r: %s", full_key, extract_err,
+                    )
+                    skipped += 1
+                    continue
+
+                if not pages_data:
                     logging.warning(
                         "Skipping S3 object %r: no extractable text in PDF",
                         full_key,
                     )
                     skipped += 1
+                    continue
+
+                for page_num, text, total_pages in pages_data:
+                    docs.append(Document(
+                        page_content=text,
+                        metadata={
+                            "file": rel_key,
+                            "page": page_num,
+                            "total_pages": total_pages,
+                        },
+                    ))
+
+                logging.info(
+                    "Finished %r: extracted %d page(s)",
+                    full_key, len(pages_data),
+                )
 
             except ClientError as exc:
-                logging.warning("Skipping S3 object %r: %s", full_key, exc)
+                logging.exception(
+                    "Skipping S3 object %r (ClientError): %s", full_key, exc,
+                )
                 skipped += 1
             except Exception as exc:
-                logging.warning("Skipping S3 object %r: %s", full_key, exc)
+                logging.exception(
+                    "Skipping S3 object %r (unexpected error): %s", full_key, exc,
+                )
                 skipped += 1
 
+        logging.info(
+            "Collection complete: %d document page(s) extracted, %d file(s) skipped, %d total",
+            len(docs), skipped, total,
+        )
         return docs, skipped, total
