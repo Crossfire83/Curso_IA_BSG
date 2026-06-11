@@ -1,7 +1,7 @@
 # RAG BSG: Proyecto 1 - RAG Serverless Multinube
 
 - [Archivo PDF](/Proyecto 1 - Plataforma RAG Serverless Multinube.pdf)
-- [Video Explicativo]()
+- [Video Explicativo](https://youtu.be/yj6EdnvAZak)
 
 ## Diagrama de Arquitectura (L3)
 

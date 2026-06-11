@@ -318,7 +318,17 @@ class VectorStore:
         Context is built from the retrieved chunks directly (not full documents),
         keeping token usage proportional to the number of relevant passages.
         """
+        import logging
+        import time
+        logger = logging.getLogger(__name__)
+
+        t0 = time.time()
         docs = self.retriever.invoke(query)
+        t1 = time.time()
+        logger.info(
+            "[VectorStore] retriever.invoke() took %.2fs — returned %d doc(s)",
+            t1 - t0, len(docs),
+        )
 
         # Build context from retrieved chunks grouped by source file
         context = self._build_context_from_chunks(docs)

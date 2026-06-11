@@ -2,7 +2,7 @@
 
 - Para la version en español, click [aqui](/README_ES.md)
 - [PDF File](/Proyecto 1 - Plataforma RAG Serverless Multinube.pdf)
-- [Explanation Video]()
+- [Explanation Video](https://youtu.be/yj6EdnvAZak)
 
 ## Architecture Diagram (L3)
 

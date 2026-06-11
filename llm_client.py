@@ -20,7 +20,7 @@ class BedrockLLM:
         config = Config(
             read_timeout=900,
             connect_timeout=60,
-            retries={'max_attempts': 0} # Optional: avoid auto-retrying on timeout
+            retries={'max_attempts': 3, 'mode': 'adaptive'}
         )
 
         self.client = boto3.client(

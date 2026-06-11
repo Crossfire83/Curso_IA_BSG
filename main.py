@@ -4,7 +4,10 @@ from llm_client import BedrockLLM
 from prompt_template import SYSTEM_PROMPT
 from dotenv import load_dotenv
 from langchain_core.documents import Document
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -44,11 +47,13 @@ class DocumentRAG:
 
     def _connect_query_only(self) -> None:
         """Connect to the existing vector store without re-indexing (called on ask)."""
-        print("Connecting to existing vector store (query-only mode)...")
+        start = time.time()
+        logger.info("[RAG] Connecting to vector store (query-only mode)...")
 
         # Vector store — query-only mode (no chunks passed)
         self.store = VectorStore()
-        print("  Vector store connected.")
+        elapsed = time.time() - start
+        logger.info("[RAG] Vector store connected in %.2fs", elapsed)
 
     def ask(self, query: str) -> dict:
         retrieval_start = time.time()
@@ -86,19 +91,43 @@ class DocumentRAG:
           - "token": a text chunk from the LLM
           - "done": final metadata dict (citations, tokens, timing)
         """
+        request_start = time.time()
+        logger.info("[RAG] ─── ask_stream START ───")
+        logger.info("[RAG] Query: %.100s%s", query, "..." if len(query) > 100 else "")
+
+        # Stage 1: Retrieval (embedding query + vector search)
         retrieval_start = time.time()
+        logger.info("[RAG] Stage 1/2: Retrieval started (Vertex AI find_neighbors)")
         citations, context = self.store.retrieve(query)
         retrieval_elapsed = time.time() - retrieval_start
+        logger.info(
+            "[RAG] Stage 1/2: Retrieval done in %.2fs — %d chunk(s), %d file(s), ~%d context chars",
+            retrieval_elapsed, sum(1 for _ in context.split("---")), len(citations), len(context),
+        )
 
         prompt = SYSTEM_PROMPT.format(context=context, query=query)
+        logger.info("[RAG] Prompt assembled: %d chars (~%d tokens)", len(prompt), len(prompt) // 4)
 
+        # Stage 2: LLM streaming (Bedrock)
         llm_start = time.time()
+        logger.info("[RAG] Stage 2/2: Bedrock streaming started")
+        first_token_received = False
         for chunk in self.llm.invoke_stream(prompt):
+            if not first_token_received:
+                first_token_elapsed = time.time() - llm_start
+                logger.info("[RAG] First token received in %.2fs (time-to-first-token)", first_token_elapsed)
+                first_token_received = True
             yield ("token", chunk)
         llm_elapsed = time.time() - llm_start
 
-        total_elapsed = retrieval_elapsed + llm_elapsed
+        total_elapsed = time.time() - request_start
         usage = self.llm.last_usage
+
+        logger.info(
+            "[RAG] ─── ask_stream DONE ─── total=%.2fs | retrieval=%.2fs | llm=%.2fs | in_tokens=%d | out_tokens=%d",
+            total_elapsed, retrieval_elapsed, llm_elapsed,
+            usage.get("input_tokens", 0), usage.get("output_tokens", 0),
+        )
 
         yield ("done", {
             "docs": citations,

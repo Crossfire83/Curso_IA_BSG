@@ -38,6 +38,14 @@ def log_non_200_responses(response):
         )
     return response
 
+@app.before_request
+def log_start():
+    logger.info(
+        "%s %s",
+        request.method,
+        request.path
+    )
+
 _rag_cache: dict[str, DocumentRAG] = {}
 _cache_lock = threading.Lock()
 
