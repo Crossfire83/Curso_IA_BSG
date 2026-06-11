@@ -386,11 +386,21 @@ class VectorStore:
         from collections import OrderedDict
 
         file_chars: OrderedDict[str, int] = OrderedDict()
+        file_pages: OrderedDict[str, set] = OrderedDict()
         for doc in docs:
             fp = doc.metadata.get("file", "unknown")
             file_chars[fp] = file_chars.get(fp, 0) + len(doc.page_content)
+            page = doc.metadata.get("page")
+            if page is not None:
+                if fp not in file_pages:
+                    file_pages[fp] = set()
+                file_pages[fp].add(page)
 
-        return [
-            {"filename": fp, "token_count": chars // 4}
-            for fp, chars in file_chars.items()
-        ]
+        results = []
+        for fp, chars in file_chars.items():
+            entry: dict = {"filename": fp, "token_count": chars // 4}
+            if fp in file_pages:
+                entry["pages"] = sorted(file_pages[fp])
+            results.append(entry)
+
+        return results

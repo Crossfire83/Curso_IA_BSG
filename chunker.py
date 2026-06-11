@@ -27,7 +27,8 @@ class DocumentChunker:
         chunks = []
 
         for doc in raw_docs:
-            header = f"### FILE: {doc.metadata['file']}\n"
+            page_info = f" (page {doc.metadata['page']})" if "page" in doc.metadata else ""
+            header = f"### FILE: {doc.metadata['file']}{page_info}\n"
             content = doc.page_content
 
             if len(content) <= self.whole_file_threshold:

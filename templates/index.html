@@ -976,9 +976,14 @@
                     return true;
                   })
                   .map(function (d) {
-                    return d.token_count
-                      ? '- ' + d.filename + ' (' + d.token_count + ' tokens)'
-                      : '- ' + d.filename;
+                    var label = '- ' + d.filename;
+                    if (d.pages && d.pages.length) {
+                      label += ' (pp. ' + d.pages.join(', ') + ')';
+                    }
+                    if (d.token_count) {
+                      label += ' [' + d.token_count + ' tokens]';
+                    }
+                    return label;
                   });
                 pre.textContent = lines.join('\n');
               } else {
@@ -1252,21 +1257,27 @@
             body: '',
           })
             .then(function (response) {
-              if (response.ok) {
-                return response.json().then(function () {
+              var contentType = response.headers.get('content-type') || '';
+              if (!contentType.includes('application/json')) {
+                // Server returned non-JSON (e.g. HTML error page from proxy/gunicorn crash)
+                throw new Error(
+                  'El servidor respondió con un error (' + response.status + '). ' +
+                  'Es posible que el proceso se haya quedado sin memoria o haya excedido el tiempo límite.'
+                );
+              }
+              return response.json().then(function (data) {
+                if (response.ok) {
                   _hideBtnSpinner(reloadBtn);
                   _showSuccessToast('¡La base de datos de documentos ha sido actualizada!');
-                });
-              } else {
-                return response.json().then(function (data) {
+                } else {
                   _hideBtnSpinner(reloadBtn);
                   alert('Error: ' + (data.error || response.statusText));
-                });
-              }
+                }
+              });
             })
             .catch(function (err) {
               _hideBtnSpinner(reloadBtn);
-              alert('Error de red: ' + err.message);
+              alert('Error: ' + err.message);
             })
             .finally(function () {
               _setAllControlsDisabled(false);

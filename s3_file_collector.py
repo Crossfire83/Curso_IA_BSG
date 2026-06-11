@@ -23,6 +23,7 @@ from pypdf import PdfReader
 
 DEFAULT_REGION = "us-west-1"
 S3_TIMEOUT_SECONDS = 30
+PAGE_EXTRACT_TIMEOUT_SECONDS = 30  # Max time per page for text extraction
 
 # AWS bucket names: 3–63 chars, lowercase letters, digits, and hyphens,
 # no leading or trailing hyphen.
@@ -167,6 +168,38 @@ def resolve_region(config_region: str) -> str:
     if env_region:
         return env_region
     return DEFAULT_REGION
+
+
+# ---------------------------------------------------------------------------
+# Safe PDF extraction (per-page timeout)
+# ---------------------------------------------------------------------------
+
+def _extract_page_text_with_timeout(page, timeout: int = PAGE_EXTRACT_TIMEOUT_SECONDS) -> str | None:
+    """Extract text from a single PDF page with a timeout.
+
+    Uses a daemon thread so that if extract_text() hangs, we don't block
+    the main thread forever. Returns None on timeout or error.
+    """
+    import threading
+
+    result: list[str | None] = [None]
+
+    def _worker():
+        try:
+            result[0] = page.extract_text()
+        except Exception:
+            result[0] = None
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+
+    if t.is_alive():
+        # Thread is stuck — we can't kill it, but since it's a daemon thread
+        # it won't prevent process exit. We just abandon it and move on.
+        return None
+
+    return result[0]
 
 
 # ---------------------------------------------------------------------------
@@ -354,50 +387,39 @@ class S3FileCollector:
                 )
                 pdf_bytes = response["Body"].read()
 
-                # Extract text from PDF using pypdf
+                # Extract text page-by-page with a per-page timeout
                 reader = PdfReader(io.BytesIO(pdf_bytes))
-                pages_text = []
+                file_has_content = False
                 for page_num, page in enumerate(reader.pages, start=1):
-                    try:
-                        text = page.extract_text()
-                        if text:
-                            pages_text.append(text)
-                    except Exception as page_exc:
+                    text = _extract_page_text_with_timeout(page)
+                    if text and text.strip():
+                        docs.append(Document(
+                            page_content=text,
+                            metadata={
+                                "file": rel_key,
+                                "page": page_num,
+                                "total_pages": len(reader.pages),
+                            },
+                        ))
+                        file_has_content = True
+                    else:
                         logging.warning(
-                            "Skipping page %d of S3 object %r: %s",
-                            page_num, full_key, page_exc,
+                            "Skipping page %d of S3 object %r (timeout or empty)",
+                            page_num, full_key,
                         )
 
-                content = "\n\n".join(pages_text)
-
-                if not content.strip():
+                if not file_has_content:
                     logging.warning(
                         "Skipping S3 object %r: no extractable text in PDF",
                         full_key,
                     )
                     skipped += 1
-                    continue
 
-                docs.append(Document(
-                    page_content=content,
-                    metadata={
-                        "file": rel_key
-                    },
-                ))
             except ClientError as exc:
                 logging.warning("Skipping S3 object %r: %s", full_key, exc)
                 skipped += 1
             except Exception as exc:
                 logging.warning("Skipping S3 object %r: %s", full_key, exc)
                 skipped += 1
-            except BaseException as exc:
-                # Catches SystemExit raised by gunicorn worker abort (timeout).
-                # Log the failure and re-raise to let gunicorn handle shutdown
-                # gracefully rather than crashing with an unhandled traceback.
-                logging.error(
-                    "Worker abort while processing S3 object %r: %s",
-                    full_key, exc,
-                )
-                raise
 
         return docs, skipped, total
