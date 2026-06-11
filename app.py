@@ -429,7 +429,7 @@ def _json_error(message: str, status: int) -> tuple[Response, int]:
 
 @app.post("/reload")
 def reload_cache() -> tuple[Response, int]:
-    """Re-index the vector store from S3 documents."""
+    """Kick off re-indexing in a background thread and return immediately."""
     try:
         bucket, err = _get_configured_bucket()
         if err:
@@ -437,48 +437,60 @@ def reload_cache() -> tuple[Response, int]:
 
         region = resolve_region("")
         config = S3SourceConfig(bucket=bucket, prefix="", region=region)
-        cache_key = config.cache_key()
 
-        # Collect documents from S3 and re-index
-        collector = S3FileCollector(config=config)
-        docs, skipped, total = collector.collect_with_stats()
-
-        if not docs:
-            with _cache_lock:
-                _rag_cache.pop(cache_key, None)
-            return _json_error(
-                f"No files found in {config.canonical_uri()}. Nothing to index.", 404
-            )
-
-        with _cache_lock:
-            _rag_cache[cache_key] = DocumentRAG(
-                documents=docs,
-                region_name=region,
-            )
+        # Start the heavy work in a background thread
+        threading.Thread(
+            target=_reload_worker,
+            args=(config, region),
+            daemon=True,
+        ).start()
 
         payload = {
-            "status": "ok",
-            "indexed": len(docs),
-            "skipped": skipped,
-            "total": total,
+            "status": "accepted",
+            "message": "Reload started in the background. Check application logs for progress.",
         }
         return app.response_class(
             response=json.dumps(payload),
             status=200,
             mimetype=RESPONSE_MIME_TYPE,
         )
-    except CredentialsError as exc:
-        return _json_error(str(exc), 500)
-    except ClientError as exc:
-        error_code = exc.response.get("Error", {}).get("Code", "")
-        message = exc.response.get("Error", {}).get("Message", str(exc))
-        if error_code == "NoSuchBucket":
-            return _json_error("Bucket not found.", 404)
-        elif error_code == "AccessDenied":
-            return _json_error("Access denied. Check IAM permissions.", 403)
-        return _json_error(f"S3 error: {error_code}. {message}", 500)
     except Exception as exc:
         return _json_error(str(exc), 500)
+
+
+def _reload_worker(config: S3SourceConfig, region: str) -> None:
+    """Background worker that collects S3 docs and re-indexes the vector store."""
+    cache_key = config.cache_key()
+    try:
+        logger.info("[reload] Starting re-index for %s ...", config.canonical_uri())
+
+        collector = S3FileCollector(config=config)
+        docs, skipped, total = collector.collect_with_stats()
+
+        if not docs:
+            with _cache_lock:
+                _rag_cache.pop(cache_key, None)
+            logger.warning(
+                "[reload] No files found in %s. Cache cleared.", config.canonical_uri()
+            )
+            return
+
+        rag = DocumentRAG(documents=docs, region_name=region)
+
+        with _cache_lock:
+            _rag_cache[cache_key] = rag
+
+        logger.info(
+            "[reload] Done. Indexed %d doc(s), skipped %d, total %d.",
+            len(docs), skipped, total,
+        )
+    except CredentialsError as exc:
+        logger.exception("[reload] Credentials error: %s", exc)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        logger.exception("[reload] S3 error (%s): %s", error_code, exc)
+    except Exception as exc:
+        logger.exception("[reload] Unexpected error: %s", exc)
 
 
 if __name__ == "__main__":

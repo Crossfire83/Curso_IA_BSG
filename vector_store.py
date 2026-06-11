@@ -3,8 +3,6 @@ import base64
 import json
 import shutil
 import uuid
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -195,8 +193,11 @@ class VectorStore:
                 for doc in chunks
             ]
 
-            # Track the new prefix so we can exclude it from cleanup
-            new_prefix = self._batch_index(
+            # Clean old staged files BEFORE generating new embeddings
+            self._clear_gcs_staging(gcs_bucket)
+
+            # Now index the new batch
+            self._batch_index(
                 texts=texts,
                 metadatas=metadatas,
                 embedding_model=embedding_model,
@@ -204,56 +205,36 @@ class VectorStore:
                 index_id=index_id,
             )
 
-            # Clean old files in the background (after index is already updated)
-            threading.Thread(
-                target=self._clear_gcs_staging,
-                args=(gcs_bucket, new_prefix),
-                daemon=True,
-            ).start()
-
 
         self.retriever = self.db.as_retriever(search_kwargs={"k": retriever_k})
 
-    def _clear_gcs_staging(self, bucket_name: str, exclude_prefix: str) -> None:
-        """Delete old staged embedding files from the GCS bucket in the background.
+    def _clear_gcs_staging(self, bucket_name: str) -> None:
+        """Delete old staged embedding files from the GCS bucket sequentially.
 
-        Runs after the index update so it doesn't block the user. Uses parallel
-        batch deletes for speed. Skips blobs under `exclude_prefix` (the current
-        indexing batch that the index is actively using).
+        Runs before new indexing to ensure a clean slate.
         """
         from google.cloud import storage
 
-        print(f"  [background] Clearing old files from gs://{bucket_name}/ ...")
+        print(f"  Clearing old files from gs://{bucket_name}/ ...")
 
         try:
             client = storage.Client()
             bucket = client.bucket(bucket_name)
-            blobs = [
-                b for b in bucket.list_blobs()
-                if not b.name.startswith(exclude_prefix)
-            ]
+            blobs = list(bucket.list_blobs())
 
             if not blobs:
-                print("    [background] No old files to clean.")
+                print("    No old files to clean.")
                 return
 
-            # Parallel batch deletion (batches of 1000, up to 8 threads)
+            # Sequential batch deletion (batches of 1000)
             batch_size = 1000
-            batches = [
-                blobs[i:i + batch_size]
-                for i in range(0, len(blobs), batch_size)
-            ]
-
-            def delete_batch(batch):
+            for i in range(0, len(blobs), batch_size):
+                batch = blobs[i:i + batch_size]
                 bucket.delete_blobs(batch)
 
-            with ThreadPoolExecutor(max_workers=8) as executor:
-                executor.map(delete_batch, batches)
-
-            print(f"    [background] Deleted {len(blobs)} old file(s) from GCS bucket.")
+            print(f"    Deleted {len(blobs)} old file(s) from GCS bucket.")
         except Exception as exc:
-            # Log but don't crash — this is best-effort background cleanup
-            print(f"    [background] GCS cleanup error: {exc}")
+            print(f"    GCS cleanup error: {exc}")
 
     def _batch_index(
         self,
@@ -262,7 +243,7 @@ class VectorStore:
         embedding_model,
         gcs_bucket: str,
         index_id: str,
-    ) -> str:
+    ) -> None:
         """Index chunks via batch update, writing clean JSON to GCS.
 
         This bypasses langchain's add_texts to avoid the
@@ -271,8 +252,6 @@ class VectorStore:
 
         We also store documents in GCS (for retrieval) via the vector store's
         internal document storage, matching what add_texts would do.
-
-        Returns the GCS prefix used for this batch (so cleanup can skip it).
         """
         from google.cloud import aiplatform, storage
 
@@ -327,7 +306,6 @@ class VectorStore:
         )
 
         print(f"    Batch index update triggered with {len(records)} datapoint(s).")
-        return prefix
 
 
 
